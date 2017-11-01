@@ -5,10 +5,11 @@ Created on Fri Jun  2 20:12:43 2017
 @author: JMJ136
 """
 from keras.layers import Input, Conv2D, Conv2DTranspose, concatenate, Conv3D
-from keras.layers.convolutional import ZeroPadding2D, ZeroPadding3D, Cropping2D, Cropping3D
+from keras.layers.convolutional import ZeroPadding2D, ZeroPadding3D, Cropping2D, Cropping3D, UpSampling3D
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential
 from keras.layers.advanced_activations import PReLU, ELU
+from keras.layers import Add
 import tensorflow as tf
 sess = tf.Session()
 from keras import backend as K
@@ -17,7 +18,6 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 from keras.layers import Conv3DTranspose
-from keras.layers import UpSampling3D
 
 #%%
 def ResModel(samp_input):
@@ -1022,12 +1022,160 @@ def BlockModel_reg3D(samp_input):
 #    zeropad = ZeroPadding3D(padding=((0,padamt), (0, padamt), (0,padamt)), data_format=None)(lay_out)
     
     return Model(lay_input,lay_out)
+
 #%%
-def TestModel():
+def BlockModel_reg3D_v2(samp_input):
+    lay_input = Input(shape=(samp_input.shape[1:]),name='input_layer')
+
+    # contracting block 1
+    rr = 1
+    lay_conv1 = Conv3D(10*rr, (1, 1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_input)
+    lay_conv3 = Conv3D(10*rr, (3, 3, 3),padding='same',name='Conv3_{}'.format(rr))(lay_input)
+    lay_conv51 = Conv3D(10*rr, (3, 3, 3),padding='same',name='Conv51_{}'.format(rr))(lay_input)
+    lay_conv52 = Conv3D(10*rr, (3, 3, 3),padding='same',name='Conv52_{}'.format(rr))(lay_conv51)
+    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+    lay_conv_all = Conv3D(10*rr,(1,1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
+    bn = BatchNormalization()(lay_conv_all)
+    lay_act = ELU(name='elu{}_1'.format(rr))(bn)
+    lay_stride = Conv3D(10*rr,(2,2,2),padding='valid',strides=(2,2,2),name='ConvStride_{}'.format(rr))(lay_act)
+    lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
+    act_list = [lay_act]
+    
+    # contracting blocks 2-3
+    for rr in range(2,4):
+        lay_conv1 = Conv3D(10*rr, (1, 1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_act)
+        lay_conv3 = Conv3D(10*rr, (3, 3, 3),padding='same',name='Conv3_{}'.format(rr))(lay_act)
+        lay_conv51 = Conv3D(10*rr, (3, 3, 3),padding='same',name='Conv51_{}'.format(rr))(lay_act)
+        lay_conv52 = Conv3D(10*rr, (3, 3, 3),padding='same',name='Conv52_{}'.format(rr))(lay_conv51)
+        lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+        lay_conv_all = Conv3D(10*rr,(1,1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
+        bn = BatchNormalization()(lay_conv_all)
+        lay_act = ELU(name='elu_{}'.format(rr))(bn)
+        lay_stride = Conv3D(10*rr,(2,2,2),padding='valid',strides=(2,2,2),name='ConvStride_{}'.format(rr))(lay_act)
+        lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
+        act_list.append(lay_act) 
+    
+    # expanding block 3
+    dd=3
+    lay_deconv1 = Conv3D(10*dd,(1,1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_act)
+    lay_deconv3 = Conv3D(10*dd,(3,3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_act)
+    lay_deconv51 = Conv3D(10*dd, (3,3,3),padding='same',name='DeConv51_{}'.format(dd))(lay_act)
+    lay_deconv52 = Conv3D(10*dd, (3,3,3),padding='same',name='DeConv52_{}'.format(dd))(lay_deconv51)
+    lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
+    lay_deconv_all = Conv3D(10*dd,(1,1,1),name='DeConvAll_{}'.format(dd))(lay_merge)
+    bn = BatchNormalization()(lay_deconv_all)
+    lay_act = ELU(name='elu_d{}'.format(dd))(bn)
+    lay_up = UpSampling3D(size=(2, 2, 2))(lay_act)
+    lay_decon = Conv3D(10*dd,(3,3,3),padding='same',name='DeCon1_{}'.format(dd))(lay_up)
+    lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_decon)
+    
+    
+    
+    # expanding blocks 2-1
+    expnums = list(range(1,3))
+    expnums.reverse()
+    for dd in expnums:
+        lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
+        lay_deconv1 = Conv3D(10*dd,(1,1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_skip)
+        lay_deconv3 = Conv3D(10*dd,(3,3,1),padding='same',name='DeConv3_{}'.format(dd))(lay_skip)
+        lay_deconv51 = Conv3D(10*dd, (3, 3, 3),padding='same',name='DeConv51_{}'.format(dd))(lay_skip)
+        lay_deconv52 = Conv3D(10*dd, (3, 3, 3),padding='same',name='DeConv52_{}'.format(dd))(lay_deconv51)
+        lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
+        lay_deconv_all = Conv3D(10*dd,(1,1,1),name='DeConvAll_{}'.format(dd))(lay_merge)
+        bn = BatchNormalization()(lay_deconv_all)
+        lay_act = ELU(name='elu_d{}'.format(dd))(bn)
+        lay_up = UpSampling3D(size=(2, 2, 2))(lay_act)
+        lay_decon = Conv3DTranspose(10*dd,(3,3,3),padding='same',name='DeCon1_{}'.format(dd))(lay_up)
+        lay_decon = Conv3DTranspose(10*dd,(3,3,3),padding='same',name='DeCon2_{}'.format(dd))(lay_decon)
+        lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_decon)
+        
+    # regressor
+    lay_out = Conv3D(1,(1,1,1), activation='linear',name='output_layer')(lay_act)
+    
+    return Model(lay_input,lay_out)
+
+#%%
+def BlockModel_reg3D_v3(samp_input):
+    lay_input = Input(shape=(samp_input.shape[1:]),name='input_layer')
+    # down sampling 1
+    pad = ZeroPadding3D(padding=(1,1,1))(lay_input)
+    down = Conv3D(8,(3,3,3),strides=(2,2,2),name='stride1',use_bias=False)(pad)
+    
+    # processing block 1-1
+    conv = Conv3D(8,(3,3,3),padding='same',name='conv1_1',use_bias=False)(down)
+    bn = BatchNormalization()(conv)
+    elu = ELU()(bn)
+    conv = Conv3D(8,(3,3,3),padding='same',name='conv1_2',use_bias=False)(elu)
+    bn = BatchNormalization()(conv)
+    act11 = ELU()(bn)
+    
+    # up sampling 1-1
+    conv = Conv3D(8,(1,1,1))(act11)
+    up = UpSampling3D(size=(2,2,2))(conv)
+    upconv = Conv3D(8,(3,3,3),padding='same',use_bias=False)(up)
+    elu = ELU()(upconv)
+    upconv = Conv3D(1,(3,3,3),padding='same',use_bias=False)(elu)
+    elu = ELU()(upconv)
+    # merge 1-1
+    added = Add()([lay_input, elu])
+    
+    # down sampling 2
+    pad = ZeroPadding3D(padding=(1,1,1))(act11)
+    down2 = Conv3D(16,(3,3,3),strides=(2,2,2),name='stride2',use_bias=False)(pad)
+    
+    # processing block 2-1
+    conv = Conv3D(16,(3,3,3),padding='same',name='conv1_1',use_bias=False)(down2)
+    bn = BatchNormalization()(conv)
+    elu = ELU()(bn)
+    conv = Conv3D(16,(3,3,3),padding='same',name='conv1_2',use_bias=False)(elu)
+    bn = BatchNormalization()(conv)
+    act21 = ELU()(bn)
+    # up sampling 2-1
+    conv = Conv3D(16,(1,1,1))(act21)
+    up = UpSampling3D(size=(2,2,2))(conv)
+    upconv = Conv3D(16,(3,3,3),padding='same',use_bias=False)(up)
+    elu = ELU()(upconv)
+    upconv = Conv3D(8,(3,3,3),padding='same',use_bias=False)(elu)
+    up21 = ELU()(upconv)
+    
+    
+    # processing block 1-2
+    conv = Conv3D(8,(3,3,3),padding='same',name='conv2_1',use_bias=False)(act11)
+    bn = BatchNormalization()(conv)
+    elu = ELU()(bn)
+    conv = Conv3D(8,(3,3,3),padding='same',name='conv2_2',use_bias=False)(elu)
+    bn = BatchNormalization()(conv)
+    act12 = ELU()(bn)
+    
+    # merge 1-2 to 21
+    merge12 = concatenate([act12,up21])
+    
+    # up sampling 1-2
+    conv = Conv3D(8,(1,1,1))(merge12)
+    up = UpSampling3D(size=(2,2,2))(conv)
+    upconv = Conv3D(8,(3,3,3),padding='same',use_bias=False)(up)
+    elu = ELU()(upconv)
+    upconv = Conv3D(1,(3,3,3),padding='same',use_bias=False)(elu)
+    elu = ELU()(upconv)
+    
+    
+       
+    
+    # regressor
+    lay_out = Conv3D(1,(1,1,1),activation='linear',name='output')(added)
+    
+    return Model(lay_input,lay_out)
+
+#%%
+def TestModel(samp_input):
     # model testing
-    lay_input = Input(shape=(256,256,3))
-    lay_c1 = Conv2D(10,(3,3),strides=(2,2),activation='relu')(lay_input)
-    lay_d1 = Conv2DTranspose(10,(4,4),strides=(2,2),activation='relu')(lay_c1)
-    lay_out = Conv2D(1,(1,1), activation='sigmoid')(lay_d1)
+    lay_input = Input(shape=(samp_input.shape[1:]),name='input_layer')
+    lay_c1 = Conv3D(10,(4,4,4),strides=(2,2,2),activation='relu')(lay_input)
+    lay_merge = concatenate([lay_c1,lay_c1])
+    bn = BatchNormalization()(lay_merge)
+    lay_act = ELU(name='elu')(bn)
+    print(lay_act.get_shape())
+    lay_up = UpSampling3D(size=(2,2,2))(lay_act)
+    lay_out = Conv3D(1,(1,1,1), activation='sigmoid')(lay_up)
     TestModel = Model(lay_input,lay_out)
     TestModel.summary()

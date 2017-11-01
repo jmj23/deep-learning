@@ -95,19 +95,19 @@ checkpoint = ModelCheckpoint(model_filepath, monitor='val_loss',verbose=0,
 
 hist = Histories()
 
-CBs = [checkpoint,earlyStopping,hist]
+#CBs = [checkpoint,earlyStopping,hist]
 CBs = [hist]
 
 #%% prepare model for training
 print("Generating model")
-RegModel = Kmodels.BlockModel_reg3D(x_train)
+RegModel = Kmodels.BlockModel_reg3D_v3(x_train)
 adopt = optimizers.adadelta()
-sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+sgd = optimizers.SGD(lr=0.005, decay=1e-6, momentum=0.9, nesterov=True)
 RegModel.compile(loss='MSE', optimizer=sgd)
 
 #%% training
 print('Starting training')
-numEp = 20
+numEp = 2
 b_s = 4
 history = RegModel.fit(x_train, y_train,
                    batch_size=b_s, epochs=numEp,
@@ -140,8 +140,14 @@ print('Generating samples')
 output = RegModel.predict(x_val,batch_size=b_s)
 
 import VisTools
-numSubj = 1
+numSubj = 2
 ims = x_val[:numSubj,...,0].reshape(numSubj*128,128,128)
 outs = output[:numSubj,...,0].reshape(numSubj*128,128,128)
 corrs = y_val[:numSubj,...,0].reshape(numSubj*128,128,128)
 VisTools.multi_slice_viewer0(np.concatenate((ims,outs,corrs,np.abs(corrs-outs)),axis=2),[])
+
+# coronal reformat
+corims = np.rollaxis(x_val[:numSubj,...,0],2,1).reshape(numSubj*128,128,128)
+corouts = np.rollaxis(output[:numSubj,...,0],2,1).reshape(numSubj*128,128,128)
+corcorrs = np.rollaxis(y_val[:numSubj,...,0],2,1).reshape(numSubj*128,128,128)
+VisTools.multi_slice_viewer0(np.concatenate((corims,corouts,corcorrs),axis=2),[])

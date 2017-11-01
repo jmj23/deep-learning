@@ -44,7 +44,6 @@ tb_cb = TensorBoard(log_dir='./TB_Graph', histogram_freq=1, batch_size=8, write_
 
 CBs = [checkpoint,earlyStopping,hist]
 
-
 #%% prepare model for training
 redo = 0
 if redo==0:
@@ -97,7 +96,7 @@ scores = SegModel.evaluate(x_test,y_test,batch_size=16)
 time2 = time.time()
 eval_scores = "Dice Loss: {0[0]:.4f}, Dice Coef: {0[1]:.4f}, Jaccard Coef: {0[2]:.4f}, Percent Error: {0[3]:.3f}%".format(scores)
 print(eval_scores)
-print('Infererence time: ',(time2-time1)/x_val.shape[0],' per slice')
+print('Infererence time: ',(time2-time1)/x_test.shape[0],' per slice')
 
 #%% plotting
 print('Plotting metrics')

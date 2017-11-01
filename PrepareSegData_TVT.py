@@ -83,6 +83,7 @@ for file in globfiles[1:numsubj]:
     targets = np.concatenate((targets,new_targets),axis=0)
     
 #%% Calculate ranking and split validation,testing data
+
 #eliminate zero masks in targets
 targ_sums = np.sum(targets[...,0],axis=(1,2))
 zeroinds = np.argwhere(targ_sums==0)
