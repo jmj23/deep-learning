@@ -4,6 +4,8 @@ Created on Wed May 31 14:06:34 2017
 
 @author: JMJ136
 """
+import sys
+sys.path.insert(0,'/home/jmj136/KerasFiles')
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 from matplotlib import pyplot as plt
@@ -15,21 +17,15 @@ import h5py
 # Model Save Path/name
 model_filepath = 'MuMapModel.hdf5'
 # Data path/name
-train_datapath = 'petrecondata_train.hdf5'
-val_datapath = 'petrecondata_val.hdf5'
-test_datapath = 'petrecondata_test.hdf5'
+datapath = 'petrecondata_tvt.hdf5'
 
-with h5py.File(train_datapath,'r') as f:
-    inputs = f.get('inputs')
-    x_train = np.array(inputs)
-    targets = f.get('targets')
-    y_train = np.array(targets)
-with h5py.File(val_datapath,'r') as f:
-    x_val = np.array(f.get('inputs'))
-    y_val = np.array(f.get('targets'))
-with h5py.File(test_datapath,'r') as f:
-    x_test = np.array(f.get('inputs'))
-    y_test = np.array(f.get('targets'))
+with h5py.File(datapath,'r') as f:
+    x_train = np.array(f.get('train_inputs'))
+    y_train = np.array(f.get('train_targets'))
+    x_val = np.array(f.get('val_inputs'))
+    y_val = np.array(f.get('val_targets'))
+    x_test = np.array(f.get('test_inputs'))
+    y_test = np.array(f.get('test_targets'))    
     
 #%% Model
 from keras.layers import Input, Cropping2D, Conv2D, concatenate
@@ -52,7 +48,7 @@ def BlockModel_reg(samp_input):
     lay_conv_all = Conv2D(10*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
     bn = BatchNormalization()(lay_conv_all)
     lay_act = ELU(name='elu{}_1'.format(rr))(bn)
-    lay_stride = Conv2D(10*rr,(3,3),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
+    lay_stride = Conv2D(10*rr,(4,4),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
     lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
     act_list = [lay_act]
     
@@ -66,7 +62,7 @@ def BlockModel_reg(samp_input):
         lay_conv_all = Conv2D(10*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
         bn = BatchNormalization()(lay_conv_all)
         lay_act = ELU(name='elu_{}'.format(rr))(bn)
-        lay_stride = Conv2D(10*rr,(3,3),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
+        lay_stride = Conv2D(10*rr,(4,4),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
         lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
         act_list.append(lay_act)
     
@@ -80,7 +76,7 @@ def BlockModel_reg(samp_input):
     lay_deconv_all = Conv2D(10*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
     bn = BatchNormalization()(lay_deconv_all)
     lay_act = ELU(name='elu_d{}'.format(dd))(bn)
-    lay_stride = Conv2DTranspose(10*dd,(3,3),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
+    lay_stride = Conv2DTranspose(10*dd,(4,4),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
     lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
         
     # expanding blocks 2-1
@@ -96,12 +92,12 @@ def BlockModel_reg(samp_input):
         lay_deconv_all = Conv2D(10*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
         bn = BatchNormalization()(lay_deconv_all)
         lay_act = ELU(name='elu_d{}'.format(dd))(bn)
-        lay_stride = Conv2DTranspose(10*dd,(3,3),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
+        lay_stride = Conv2DTranspose(10*dd,(4,4),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
         lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
     # classifier
     lay_out = Conv2D(1,(1,1), activation='linear',name='output_layer')(lay_act)
     
-    zeropad = ZeroPadding2D(padding=((0,padamt), (0, padamt)), data_format=None)(lay_out)
+    zeropad = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(lay_out)
     
     return Model(lay_input,zeropad)
     
@@ -124,7 +120,7 @@ RegModel.compile(loss='MSE', optimizer=adopt)
 
 #%% training
 print('Starting training')
-numEp = 3
+numEp = 15
 b_s = 8
 history = RegModel.fit(x_train, y_train,
                    batch_size=b_s, epochs=numEp,
@@ -134,9 +130,9 @@ history = RegModel.fit(x_train, y_train,
 
 print('Training complete')
 
-score = RegModel.evaluate(x_val,y_val)
+score = RegModel.evaluate(x_test,y_test)
 print("")
-print("MSE on validation data: {}".format(score))
+print("MSE on test data: {}".format(score))
 
 #%% plotting
 print('Plotting metrics')
@@ -160,4 +156,4 @@ pr_bs = np.minimum(16,x_test.shape[0])
 output = RegModel.predict(x_test,batch_size=pr_bs)
 
 from VisTools import multi_slice_viewer0
-multi_slice_viewer0(output[...,0],[])
+multi_slice_viewer0(np.c_[x_test[...,0],output[...,0],y_test[...,0]],[])
