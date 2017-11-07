@@ -122,7 +122,7 @@ def BlockModel_reg(samp_input):
     return Model(lay_input,lay_out)
     
 #%% callbacks
-earlyStopping = EarlyStopping(monitor='val_loss',patience=8,verbose=1,mode='auto')
+earlyStopping = EarlyStopping(monitor='val_loss',patience=16,verbose=1,mode='auto')
 
 checkpoint = ModelCheckpoint(model_filepath, monitor='val_loss',verbose=0,
                              save_best_only=True, save_weights_only=False,
@@ -140,7 +140,7 @@ RegModel.compile(loss='MSE', optimizer=adopt)
 
 #%% training
 print('Starting training')
-numEp = 50
+numEp = 80
 b_s = 8
 history = RegModel.fit(x_train, y_train,
                    batch_size=b_s, epochs=numEp,
@@ -191,6 +191,8 @@ plt.show()
 print('Mean SSIM of ', np.mean(SSIMs))
 print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
 
+fig4 = plt.figure()
+plt.imshow(np.c_[x_test[68,...,0],output[68,...,0],y_test[68,...,0]],cmap='gray')
 
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],output[...,0],y_test[...,0]],SSIMs)
