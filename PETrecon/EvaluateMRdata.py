@@ -8,14 +8,10 @@ import numpy as np
 import glob
 import scipy.io as spio
 import os
+os.environ["CUDA_DEVICE_ORDER"]= "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
-import tensorflow as tf
-sess = tf.Session()
-from keras import backend as K
-K.set_session(sess)
 from keras.models import load_model
-K._LEARNING_PHASE = tf.constant(0)
 
 DataDir = 'MatData'
 filepath = "{}/PETreconTrainingData{:03d}.mat".format(DataDir, 1)
@@ -23,8 +19,7 @@ outputdir = "MuMapOutput"
 savepath = "{}/MuMapDataSubject{:03d}.mat".format(outputdir,1)
 numsubj = 11
 #%% Load model
-with tf.device('/cpu:0'):
-    RegModel = load_model("MuMapModel_v4.hdf5")
+RegModel = load_model("MuMapModel_v4.hdf5")
     
 #%% Inputs
 print('Loading inputs')
