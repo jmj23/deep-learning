@@ -144,10 +144,13 @@ def mask_viewer0(imvol,maskvol,name='Mask Display'):
     msk[...,1] = 1
     msk[...,3] = .3*maskvol.astype(float)
     
+    imvol -= np.min(imvol)
+    imvol /= np.max(imvol)
+    
     fig = plt.figure(figsize=(5,5))
     fig.index = 0
-    imobj = plt.imshow(imvol[fig.index,:,:],cmap='gray',aspect='equal')
-    mskobj = plt.imshow(msk[fig.index,:,:,:])
+    imobj = plt.imshow(imvol[fig.index,...],cmap='gray',aspect='equal',vmin=0, vmax=1)
+    mskobj = plt.imshow(msk[fig.index,...])
     plt.tight_layout()
     plt.suptitle(name)
     ax = fig.axes[0]
@@ -183,6 +186,56 @@ def next_slice_m0(fig):
     imvol = fig.imvol
     maskvol = fig.maskvol
 #    fig.index = (fig.index + 1) % imvol.shape[2]  # wrap around using %
+    fig.index = np.max([np.min([fig.index+1,imvol.shape[0]-1]),0])
+    fig.imobj.set_data(imvol[fig.index,:,:])
+    fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    fig.canvas.draw()
+#%%
+def registration_viewer(fixed,moving,alpha=.5,name='Registration Results'):
+    msksiz = np.r_[moving.shape,4]
+    msk = np.zeros(msksiz,dtype=float)
+    msk[...,0] = 1
+    msk[...,1] = .1
+    msk[...,2] = .1
+    msk[...,3] = alpha*moving
+    
+    fig = plt.figure(figsize=(5,5))
+    fig.index = 0
+    imobj = plt.imshow(fixed[fig.index,...],cmap='gray',aspect='equal')
+    mskobj = plt.imshow(msk[fig.index,...])
+    plt.tight_layout()
+    plt.suptitle(name)
+    ax = fig.axes[0]
+    ax.set_axis_off()
+    txtobj = plt.text(0.05, .95,fig.index+1, ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    fig.imvol = fixed
+    fig.maskvol = msk
+    fig.imobj = imobj
+    fig.mskobj = mskobj
+    fig.txtobj = txtobj
+    fig.canvas.mpl_connect('scroll_event',on_scroll_r0)
+    
+def on_scroll_r0(event):
+    fig = event.canvas.figure
+    if event.button == 'up':
+        next_slice_r0(fig)
+    elif event.button == 'down':
+        previous_slice_r0(fig)
+    fig.txtobj.set_text(fig.index+1)
+    fig.canvas.draw()
+    
+def previous_slice_r0(fig):
+    imvol = fig.imvol
+    maskvol = fig.maskvol
+    fig.index = np.max([np.min([fig.index-1,imvol.shape[0]-1]),0])
+    fig.imobj.set_data(imvol[fig.index,:,:])
+    fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    fig.canvas.draw()
+
+def next_slice_r0(fig):
+    imvol = fig.imvol
+    maskvol = fig.maskvol
     fig.index = np.max([np.min([fig.index+1,imvol.shape[0]-1]),0])
     fig.imobj.set_data(imvol[fig.index,:,:])
     fig.mskobj.set_data(maskvol[fig.index,:,:,:])
