@@ -71,11 +71,19 @@ def dice_loss(y_true, y_pred):
     intersection = K.sum(y_true_f * y_pred_f)
     return 1-(2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
 #%% Model Architecture
-def BlockModel(samp_input):
-    lay_input = Input(shape=(samp_input.shape[1:]),name='input_layer')
+def BlockModel(input_shape,filt_num=16,numBlocks=3):
+    lay_input = Input(shape=(input_shape[1:]),name='input_layer')
+        
+     #calculate appropriate cropping
+    mod = np.mod(input_shape[0:2],2**numBlocks)
+    padamt = mod+2
+    # calculate size reduction
+    startsize = np.max(input_shape[0:2]-padamt)
+    minsize = (startsize-np.sum(2**np.arange(1,numBlocks+1)))/2**numBlocks
+    if minsize<4:
+        raise ValueError('Too small of input for this many blocks. Use fewer blocks or larger input')
     
-    padamt = 1
-    crop = Cropping2D(cropping=((0, padamt), (0, padamt)), data_format=None)(lay_input)
+    crop = Cropping2D(cropping=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_input)
     
     # contracting block 1
     rr = 1
@@ -91,8 +99,8 @@ def BlockModel(samp_input):
     lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
     act_list = [lay_act]
     
-    # contracting blocks 2-4    
-    for rr in range(2,5):
+    # contracting blocks 2-n 
+    for rr in range(2,numBlocks+1):
         lay_conv1 = Conv2D(10*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_act)
         lay_conv3 = Conv2D(10*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(lay_act)
         lay_conv51 = Conv2D(10*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(lay_act)
@@ -105,8 +113,8 @@ def BlockModel(samp_input):
         lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
         act_list.append(lay_act)
     
-    # expanding block 4
-    dd=4
+    # expanding block n
+    dd=numBlocks
     lay_deconv1 = Conv2D(10*dd,(1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_act)
     lay_deconv3 = Conv2D(10*dd,(3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_act)
     lay_deconv51 = Conv2D(10*dd, (3,3),padding='same',name='DeConv51_{}'.format(dd))(lay_act)
@@ -118,8 +126,8 @@ def BlockModel(samp_input):
     lay_stride = Conv2DTranspose(10*dd,(3,3),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
     lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
         
-    # expanding blocks 3-1
-    expnums = list(range(1,4))
+    # expanding blocks n-1
+    expnums = list(range(1,numBlocks))
     expnums.reverse()
     for dd in expnums:
         lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
@@ -136,12 +144,12 @@ def BlockModel(samp_input):
     # classifier
     lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(lay_act)
     
-    zeropad = ZeroPadding2D(padding=((0,padamt), (0, padamt)), data_format=None)(lay_out)
+    lay_pad = ZeroPadding2D(padding=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_out)
     
-    return Model(lay_input,zeropad)
+    return Model(lay_input,lay_pad)
 #%% Generate and compile model
 def GetModel(x_train):
-    Model = BlockModel(x_train)
+    Model = BlockModel(x_train.shape)
     adopt = optimizers.adam()
     Model.compile(loss=dice_coef_loss, optimizer=adopt,
                   metrics=[dice_loss])
