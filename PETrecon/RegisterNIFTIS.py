@@ -10,6 +10,7 @@ sys.path.insert(0,'/home/jmj136/KerasFiles')
 import ants
 import numpy as np
 from VisTools import multi_slice_viewer0, registration_viewer
+from scipy.ndimage import morphology as scimorph
 
 datapath = 'NIFTIs/subj{:03d}_{}.nii'
 
@@ -39,7 +40,7 @@ def display_ants_reg(img1,img2):
     nparray2 -= np.min(nparray2)
     nparray2 /= np.max(nparray2)
     nparray2 = np.rollaxis(np.rollaxis(nparray2,2,0),2,1)    
-    registration_viewer(nparray1,nparray2,.5)
+    registration_viewer(nparray1,nparray2,.6)
 
 #%% Data loading
 subj = 2
@@ -61,12 +62,6 @@ CT_array += 1024
 CT_array[CT_array<0]= 0
 CT_imgS = CT_img.new_image_like(CT_array)
 
-# make combined MR image
-fat_array = fat_img.numpy()
-water_array = water_img.numpy()
-com_array = fat_array+water_array
-com_img = water_img.new_image_like(com_array)
-
 
 #%% MR-> NAC  Registration
 MR_tx = ants.registration(fixed=nac_imgC,moving=water_img,type_of_transform='Affine')
@@ -76,31 +71,44 @@ reg_fat = ants.apply_transforms(fixed=nac_imgC, moving=fat_img,
 reg_inphase = ants.apply_transforms(fixed=nac_imgC, moving=inphase_img,
                                     transformlist=MR_tx['fwdtransforms'] )
 
-#%% create mask for CT registration
-NAC_tx = ants.registration(fixed=water_img,moving=nac_imgC,type_of_transform='Affine')
-nac_mr_array = NAC_tx['warpedmovout'].numpy()
+#%% create mask for CT from NAC image
+nac_mr_array = nac_imgC.numpy()
 nac_mr_array -= np.min(nac_mr_array)
 nac_mr_array /= np.max(nac_mr_array)
-nac_mask = nac_mr_array>.06
-nac_mask_img = water_img.new_image_like(nac_mask)
+nac_mask = nac_mr_array>.1
+nac_mask = np.rollaxis(nac_mask,2,0)
+y,x = np.ogrid[-3: 3+1, -3: 3+1]
+strel7 = x**2+y**2 <= 3**2
+strel3 = x**2+y**2 <=2**2
+for ii in range(nac_mask.shape[0]):
+    nac_mask[ii,...] = scimorph.binary_fill_holes(nac_mask[ii,...])
+    nac_mask[ii,...] = scimorph.binary_closing(nac_mask[ii,...],strel7)
+    nac_mask[ii,...] = scimorph.binary_opening(nac_mask[ii,...],strel7)
+    nac_mask[ii,...] = scimorph.binary_dilation(nac_mask[ii,...],strel3)
+    
+nac_mask = np.rollaxis(nac_mask,0,3)
+    
+#nac_mask_img = nac_imgC.new_image_like(nac_mask.astype(np.float))
 
-#%% CT-> MR registration
-CT_aff = ants.registration(fixed=com_img,moving=CT_imgS,type_of_transform='Affine')
-CT_syn = ants.registration(fixed=com_img,moving=CT_imgS,type_of_transform='SyN',
-                           initial_transform=CT_aff['fwdtransforms'])
+#%% CT-> NAC registration
 # affine CT
-aff_CT = ants.apply_transforms(fixed=com_img,moving=CT_imgS,
-                               transformlist=CT_aff['fwdtransforms'])
-# non-Rigid CT
-syn_CT = CT_syn['warpedmovout']
+CT_aff_reg = ants.registration(fixed=nac_imgC,moving=CT_imgS,type_of_transform='Affine')
+aff_CT = CT_aff_reg['warpedmovout']
+
+CT_array = aff_CT.numpy()
+CT_array[~nac_mask]= 0
+CT_imgM = aff_CT.new_image_like(CT_array)
+
+# nonrigid CT
+CT_syn_reg = ants.registration(fixed=nac_imgC,moving=CT_imgM,type_of_transform='SyN',
+                               aff_sampling=16)
+syn_CT = CT_syn_reg['warpedmovout']
+# fix end slices
+CT_array = syn_CT.numpy()
+CT_array[...,0]= CT_array[...,1]
+CT_array[...,-1]= CT_array[...,-2]
+reg_CT = syn_CT.new_image_like(CT_array)
 
 
-# CT-> MR-> NAC
-reg_CT = ants.apply_transforms(fixed=nac_imgC, moving=aff_CT,
-                                transformlist=MR_tx['fwdtransforms'])
-reg_CT2 = ants.apply_transforms(fixed=nac_imgC, moving=syn_CT,
-                                transformlist=MR_tx['fwdtransforms'])
-
-display_ants([nac_imgC,reg_water,reg_CT,reg_CT2])
-display_ants([water_img,com_img,aff_CT,syn_CT])
+display_ants([nac_imgC,reg_water,reg_CT])
 display_ants_reg(nac_imgC,reg_CT)
