@@ -6,6 +6,7 @@ Created on Mon Oct 23 15:45:31 2017
 @author: jmj136
 """
 import numpy as np
+import skimage.exposure as skexp
 from keras.layers import Input, Conv2D, Conv2DTranspose, concatenate
 from keras.layers.convolutional import ZeroPadding2D, Cropping2D
 from keras.layers.normalization import BatchNormalization
@@ -29,10 +30,8 @@ model_filepath = 'SegModel.hdf5'
 datapath = 'segmentation_data.hdf5'
 # Data must be saved in a single HDF5 file in the following format:
 # two datasets: inputs "x" and targets "y"
-# inputs are of shape (samples,x,y,channels)
-# if inputs are of single channel, then (samples,x,y)
-# outputs are of shape (samples,x,y,classes)
-# if outputs are of single class, then (samples,x,y)
+# inputs are of shape (samples,row,col,channels)
+# outputs are of shape (samples,row,col,classes)
 
 # choose whether to augment training data or not
 augment_data=False
@@ -52,9 +51,26 @@ def SplitData(x_data,y_data,val_split=.2):
     # use those indices to take out validation data from training data
     val_x = np.take(x_data,val_inds,axis=0)
     val_y = np.take(y_data,val_inds,axis=0)
-    train_x = np.delete(val_x,val_inds,axis=0)
-    train_y = np.delete(val_y,val_inds,axis=0)
+    # remove validation data from training data and randomize
+    train_x = np.random.permutation(np.delete(val_x,val_inds,axis=0))
+    train_y = np.random.permutation(np.delete(val_y,val_inds,axis=0))
     return train_x,train_y,val_x,val_y
+#%% data augmentation, if desired
+def generate_augmented_data(inputs,targets):
+    # LR flips
+    fl_inputs = np.flip(inputs,2)
+    fl_targets = np.flip(targets,2)
+    
+    # gamma corrections
+    gammas = .5 + np.random.rand(inputs.shape[0])
+    gm_inputs = np.copy(inputs)
+    for ii in range(gm_inputs.shape[0]):
+        gm_inputs[ii,...,0] = skexp.adjust_gamma(gm_inputs[ii,...,0],gamma=gammas[ii])
+        gm_inputs[ii,...,1] = skexp.adjust_gamma(gm_inputs[ii,...,1],gamma=gammas[ii])
+    gm_targets = np.copy(targets)
+    aug_inputs = np.random.permutation(np.concatenate((inputs,fl_inputs,gm_inputs),axis=0))
+    aug_targets = np.random.permutation(np.concatenate((targets,fl_targets,gm_targets),axis=0))
+    return aug_inputs,aug_targets
 #%% Callbacks
 def SetCallbacks():
     earlyStopping = EarlyStopping(monitor='val_loss',patience=10, verbose=1,mode='auto')
@@ -174,8 +190,7 @@ if __name__ == "__main__":
     
     if augment_data:
         print("Augmenting data...")
-        
-        print("not currently available")
+        x_train,y_train = generate_augmented_data(x_train,y_train)
         
     print("Setting callbacks...")
     CBs = SetCallbacks()
