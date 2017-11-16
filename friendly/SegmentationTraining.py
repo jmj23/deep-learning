@@ -16,11 +16,10 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 import keras.backend as K
 from matplotlib import pyplot as plt
-from CustomMetrics import dice_coef_loss
 import time
 import h5py
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 #%% User defined variables
 
 # Where to store the model
@@ -40,7 +39,7 @@ augment_data=False
 valFrac = 0.20
 
 # maximum number of epochs (iterations) to train
-numEp = 20
+numEp = 2
 
 # model-specifying variables
 
@@ -51,7 +50,7 @@ filter_multiplier = 16
 # sets the number of Inception modules to use in the model
 # increase to get larger receptive field and deeper model
 # decrease if your images are too small
-numberOfBlocks = 3
+numberOfBlocks = 4
 
 
 #%% Data Loading
@@ -70,8 +69,12 @@ def SplitData(x_data,y_data,val_split=.2):
     val_x = np.take(x_data,val_inds,axis=0)
     val_y = np.take(y_data,val_inds,axis=0)
     # remove validation data from training data and randomize
-    train_x = np.random.permutation(np.delete(x_data,val_inds,axis=0))
-    train_y = np.random.permutation(np.delete(y_data,val_inds,axis=0))
+    train_x = np.delete(x_data,val_inds,axis=0)
+    train_y = np.delete(y_data,val_inds,axis=0)
+    rand_inds = np.random.permutation(np.arange(x_train.shape[0]))
+    train_x = np.take(train_x,rand_inds,axis=0)
+    train_y = np.take(train_y,rand_inds,axis=0)
+    
     return train_x,train_y,val_x,val_y
 #%% data augmentation, if desired
 def generate_augmented_data(inputs,targets):
@@ -104,6 +107,11 @@ def dice_loss(y_true, y_pred):
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return 1-(2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+def dice_score(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
 #%% Model Architecture
 def BlockModel(input_shape,filt_num=16,numBlocks=3):
     lay_input = Input(shape=(input_shape[1:]),name='input_layer')
@@ -177,16 +185,18 @@ def BlockModel(input_shape,filt_num=16,numBlocks=3):
         lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
                 
     lay_pad = ZeroPadding2D(padding=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_act)
+    lay_cleanup = Conv2D(filt_num,(3,3),padding='same',name='CleanUp_1')(lay_pad)
+    lay_cleanup = Conv2D(filt_num,(3,3),padding='same',name='CleanUp_2')(lay_cleanup)
     # classifier
-    lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
+    lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(lay_cleanup)
     
     return Model(lay_input,lay_out)
 #%% Generate and compile model
 def GetModel(x_train,numFilts=16,numBlocks=3):
     Model = BlockModel(x_train.shape,numFilts,numBlocks)
     adopt = optimizers.adam()
-    Model.compile(loss=dice_coef_loss, optimizer=adopt,
-                  metrics=[dice_loss])
+    Model.compile(loss=dice_loss, optimizer=adopt,
+                  metrics=[dice_score])
     return Model
 #%% evaluate model
 def EvaluateModel(Model,x_test,y_test):
@@ -196,6 +206,62 @@ def EvaluateModel(Model,x_test,y_test):
     timePerSlice = (time2-time1)/x_test.shape[0]    
     return scores,timePerSlice
 
+#%% Viewing tool
+def mask_viewer0(imvol,maskvol,name='Mask Display'):
+    msksiz = np.r_[maskvol.shape,4]
+    msk = np.zeros(msksiz,dtype=float)
+    msk[...,0] = 1
+    msk[...,1] = 1
+    msk[...,3] = .3*maskvol.astype(float)
+    
+    imvol -= np.min(imvol)
+    imvol /= np.max(imvol)
+    
+    fig = plt.figure(figsize=(5,5))
+    fig.index = 0
+    imobj = plt.imshow(imvol[fig.index,...],cmap='gray',aspect='equal',vmin=0, vmax=1)
+    mskobj = plt.imshow(msk[fig.index,...])
+    plt.tight_layout()
+    plt.suptitle(name)
+    ax = fig.axes[0]
+    ax.set_axis_off()
+    txtobj = plt.text(0.05, .95,fig.index+1, ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    fig.imvol = imvol
+    fig.maskvol = msk
+    fig.imobj = imobj
+    fig.mskobj = mskobj
+    fig.txtobj = txtobj
+    fig.canvas.mpl_connect('scroll_event',on_scroll_m0)
+    
+def on_scroll_m0(event):
+    fig = event.canvas.figure
+    if event.button == 'up':
+        next_slice_m0(fig)
+    elif event.button == 'down':
+        previous_slice_m0(fig)
+    fig.txtobj.set_text(fig.index+1)
+    fig.canvas.draw()
+    
+def previous_slice_m0(fig):
+    imvol = fig.imvol
+    maskvol = fig.maskvol
+#    fig.index = (fig.index - 1) % imvol.shape[2]  # wrap around using %
+    fig.index = np.max([np.min([fig.index-1,imvol.shape[0]-1]),0])
+    fig.imobj.set_data(imvol[fig.index,:,:])
+    fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    fig.canvas.draw()
+
+def next_slice_m0(fig):
+    imvol = fig.imvol
+    maskvol = fig.maskvol
+#    fig.index = (fig.index + 1) % imvol.shape[2]  # wrap around using %
+    fig.index = np.max([np.min([fig.index+1,imvol.shape[0]-1]),0])
+    fig.imobj.set_data(imvol[fig.index,:,:])
+    fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    fig.canvas.draw()
+    
+#%% Main script
 if __name__ == "__main__":
     print("Setting up segmentation")
     
@@ -205,6 +271,8 @@ if __name__ == "__main__":
     
     print("Separating data into validation and test...")
     x_train,y_train,x_val,y_val=SplitData(x_data,y_data,val_split=valFrac)
+    del x_data
+    del y_data
     
     if augment_data:
         print("Augmenting data...")
@@ -215,6 +283,7 @@ if __name__ == "__main__":
     
     print("Building model...")
     SegModel = GetModel(x_train,filter_multiplier,numberOfBlocks)
+    print('Number of parameters: ',SegModel.count_params())
     
     print('Starting training')
     b_s = np.minimum(np.maximum(np.round(x_train.shape[0]/20),4),16).astype(np.int)
@@ -226,14 +295,23 @@ if __name__ == "__main__":
     
     print('Training Complete')
     
-    print('Plotting results...')
+    print('Evaluating results...')
+    scores,tps = EvaluateModel(SegModel,x_val,y_val)
+    print('Validation Dice Score: ',scores[1])
+    print('Inference time: {:.03f} ms'.format(tps*10e3))
     
     print('Plotting metrics')
     actEpochs = len(history.history['loss'])
     epochs = np.arange(1,actEpochs+1)
     
     fig2 = plt.figure(1,figsize=(12.0, 6.0));
-    plt.plot(epochs,history.history['loss'],'r-o')
-    plt.plot(epochs,history.history['val_loss'],'b-s')
-    plt.legend(['dice loss', 'dice validation loss'], loc='upper left')
+    plt.plot(epochs,history.history['dice_score'],'r-o')
+    plt.plot(epochs,history.history['val_dice_score'],'b-s')
+    plt.ylim([0,1])
+    plt.legend(['trainind dice score', 'validation dice score'], loc='upper left')
     plt.show()
+    
+    print('Displaying validation masks')
+    output = SegModel.predict(x_val,batch_size=8)
+    mask_viewer0(x_val[...,0],output[...,0])
+    
