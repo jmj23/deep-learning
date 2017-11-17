@@ -33,7 +33,7 @@ datapath = 'SelectionData.hdf5'
 valFrac = 0.20
 
 # maximum number of epochs (iterations) to train
-numEp = 30
+numEp = 50
 
 # model-specifying variables
 
@@ -204,6 +204,7 @@ if __name__ == "__main__":
     print("Data loaded.")
     
     #Setup loop
+    numRep = 4
     # Make array of data amounts
     a = np.linspace(.1,1,10)
     amts = np.empty((2*a.size), dtype=a.dtype)
@@ -216,10 +217,11 @@ if __name__ == "__main__":
     augs = np.empty((numIter), dtype=b.dtype)
     augs[0::2] = b
     augs[1::2] = c
-    results = np.zeros((numIter,3))
+    results = np.zeros((numRep*numIter,3))
     
     ii = 0;
-    for _ in range(2):
+    
+    for _ in range(numRep):
         for it in range(numIter):
             print("Splitting data")
             x_train,y_train,x_val,y_val=SplitData(x_data,y_data,val_split=valFrac,amount_of_data=amts[it])
@@ -249,9 +251,12 @@ if __name__ == "__main__":
                                               'dice_coef_loss':dice_coef_loss})
             print('Evalulating...')
             scores = SegModel.evaluate(x_test,y_test)
-            results[ii,:] = np.array([amts[ii],augs[ii],scores[1]])
+            results[ii,:] = np.array([amts[it],augs[it],scores[1]])
+            np.savetxt('DataSelectionResults/Results_{}.txt'.format(ii),results,fmt='%.03f')
+            print('Iteration {}/{} complete'.format(ii+1,numRep*numIter))
             ii +=1
             
+    print('Complete!')
     fig1 = plt.figure(1,figsize=(12.0, 6.0));
     plt.plot(results[0::2,0],results[0::2,2],'ro')
     plt.plot(results[1::2,0],results[1::2,2],'bo')
@@ -259,5 +264,7 @@ if __name__ == "__main__":
     plt.title('Dice Score vs Fraction of Data used')
     plt.legend(['No data augmentation','Data Augmentation'], loc='upper left')
     plt.show()
+    
+    
     
     
