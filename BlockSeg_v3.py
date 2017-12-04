@@ -20,7 +20,7 @@ import time
 
 #%%
 # Model Save Path/name
-model_filepath = 'BlockSegModel_v3.hdf5'
+model_filepath = 'BlockSegModel_v4.hdf5'
 # Data path/name
 datapath = 'segdata_tvt.hdf5'
 with h5py.File(datapath,'r') as f:
@@ -42,7 +42,8 @@ hist = Histories()
 
 tb_cb = TensorBoard(log_dir='./TB_Graph', histogram_freq=1, batch_size=8, write_graph=True, write_images=True)
 
-CBs = [checkpoint,earlyStopping,hist]
+#CBs = [checkpoint,earlyStopping,hist]
+CBs = []
 
 #%% prepare model for training
 redo = 0
@@ -62,7 +63,7 @@ else:
 
 #%% training
 print('Starting training')
-numEp = 80
+numEp = 10
 b_s = 8
 history = SegModel.fit(x_train, y_train,
                    batch_size=b_s, epochs=numEp,
@@ -74,7 +75,7 @@ print('Training complete')
 
 #%% evaluate model
 
-if True:
+if False:
     # load checkpoint model
     SegModel = load_model(model_filepath,
                           custom_objects={'jac_met':jac_met,

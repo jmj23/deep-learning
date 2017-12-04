@@ -33,7 +33,7 @@ datapath = 'SelectionData.hdf5'
 valFrac = 0.20
 
 # maximum number of epochs (iterations) to train
-numEp = 50
+numEp = 60
 
 # model-specifying variables
 
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     print("Data loaded.")
     
     #Setup loop
-    numRep = 4
+    numRep = 5
     # Make array of data amounts
     a = np.linspace(.1,1,10)
     amts = np.empty((2*a.size), dtype=a.dtype)
@@ -238,8 +238,9 @@ if __name__ == "__main__":
             
             print('Starting training')
             b_s = 16
+            maxEpoch = np.round(numEp/amts[it]*(2-augs[it])).astype(np.int)
             history = SegModel.fit(x_train, y_train,
-                               batch_size=b_s, epochs=numEp,
+                               batch_size=b_s, epochs=maxEpoch,
                                validation_data=(x_val,y_val),
                                verbose=1,
                                callbacks=CBs)
@@ -260,9 +261,9 @@ if __name__ == "__main__":
     fig1 = plt.figure(1,figsize=(12.0, 6.0));
     plt.plot(results[0::2,0],results[0::2,2],'ro')
     plt.plot(results[1::2,0],results[1::2,2],'bo')
-    plt.ylim([0,1])
+    plt.ylim([0.8,1])
     plt.title('Dice Score vs Fraction of Data used')
-    plt.legend(['No data augmentation','Data Augmentation'], loc='upper left')
+    plt.legend(['No data augmentation','Data Augmentation'], loc='lower left')
     plt.show()
     
     
