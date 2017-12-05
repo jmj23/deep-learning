@@ -75,56 +75,12 @@ def RegMRNAC(nac_imgC,water_img,fat_img,inphase_img):
     reg_inphase = ants.apply_transforms(fixed=nac_imgC, moving=inphase_img,
                                         transformlist=MR_tx['fwdtransforms'] )
     return reg_water,reg_fat,reg_inphase
-#%% create mask for CT from NAC image
-def CreateCTmask(nac_imgC,reg_water,reg_fat):
-    #NAC version
-    nac_mr_array = nac_imgC.numpy()
-    nac_mr_array -= np.min(nac_mr_array)
-    nac_mr_array /= np.max(nac_mr_array)
-    nac_mask = nac_mr_array>.05
-    nac_mask = np.rollaxis(nac_mask,2,0)
-    
-    y,x = np.ogrid[-3: 3+1, -3: 3+1]
-    strel7 = x**2+y**2 <= 3**2
-    strel3 = x**2+y**2 <=2**2
-    for ii in range(nac_mask.shape[0]):
-        nac_mask[ii,...] = scimorph.binary_erosion(nac_mask[ii,...],strel7)
-        nac_mask[ii,...] = scimorph.binary_closing(nac_mask[ii,...],strel7)
-        nac_mask[ii,...] = scimorph.binary_fill_holes(nac_mask[ii,...])
-        nac_mask[ii,...] = scimorph.binary_opening(nac_mask[ii,...],strel7)
-        nac_mask[ii,...] = scimorph.binary_dilation(nac_mask[ii,...],strel3)
-        
-    nac_mask = np.rollaxis(nac_mask,0,3)
-    
-    
-    # Water/fat version    
-    water_array = reg_water.numpy()
-    fat_array = reg_water.numpy()
-    com_array = water_array + fat_array
-    com_array -= np.min(com_array)
-    com_array /= np.max(com_array)
-    com_mask = com_array>.08
-    com_mask = np.rollaxis(com_mask,2,0)
-        
-    y,x = np.ogrid[-3: 3+1, -3: 3+1]
-    strel3 = x**2+y**2 <= 3**2
-#    strel2 = x**2+y**2 <= 2**2
-    for ii in range(com_mask.shape[0]):
-#        com_mask[ii,...] = scimorph.binary_erosion(com_mask[ii,...],strel7)
-        com_mask[ii,...] = scimorph.binary_closing(com_mask[ii,...],strel3)
-        com_mask[ii,...] = scimorph.binary_fill_holes(com_mask[ii,...])
-        com_mask[ii,...] = scimorph.binary_opening(com_mask[ii,...],strel3)
-#        com_mask[ii,...] = scimorph.binary_dilation(com_mask[ii,...],strel2)
-    
-    com_mask = np.rollaxis(com_mask,0,3)
-    
-    return com_mask
 
 #%% Mask CT image
 def RemoveCTcoil(CT_imgS):
     
     CT_array = CT_imgS.numpy()
-    CT_mask = CT_array>800
+    CT_mask = CT_array>500
     CT_mask = np.rollaxis(CT_mask,2,0)
     
     y,x = np.ogrid[-3: 3+1, -3: 3+1]
@@ -172,19 +128,22 @@ def RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat):
     CT_aff_reg = ants.registration(fixed=com_imgZ,moving=rig_CT,type_of_transform='Affine')
     aff_CT = CT_aff_reg['warpedmovout']
     
-#    CT_array = aff_CT.numpy()
-#    CT_array[~nac_mask]= 0
-#    CT_imgM = aff_CT.new_image_like(CT_array)
-    
     # Affine CT 2
-    CT_aff_reg2 = ants.registration(fixed=com_imgZ,moving=CT_imgM,type_of_transform='Affine')
+    CT_aff_reg2 = ants.registration(fixed=com_imgZ,moving=CT_imgM,type_of_transform='Affine',
+                                    aff_sampling=16)
     aff_CT2 = CT_aff_reg2['warpedmovout']
     
     # nonrigid CT
     CT_syn_reg = ants.registration(fixed=com_imgZ,moving=aff_CT2,type_of_transform='SyN',
-                                   aff_sampling=16)
+                                   syn_sampling=16,reg_iterations=(20,10,0))
     syn_CT = CT_syn_reg['warpedmovout']
-    return rig_CT,aff_CT,aff_CT2,syn_CT,good_inds
+    
+    # shift CT image back to initial scaling
+    CT_array = syn_CT.numpy()
+    CT_array -= 1024
+    CT_imgRS = syn_CT.new_image_like(CT_array)
+    
+    return rig_CT,aff_CT,aff_CT2,syn_CT,good_inds,CT_imgRS
 #%% Export data
 def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_CT,nac_img,good_inds):
     ants.image_write(reg_water,savepath.format(subj,'WATER'))
@@ -196,6 +155,7 @@ def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_CT,nac_img,good_ind
 #%% Main Script
 
 subjectlist = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+#subjectlist = [10]
 
 for subj in subjectlist:
     print('Loading data...')
@@ -205,14 +165,13 @@ for subj in subjectlist:
     print('Registering MR images...')
     reg_water,reg_fat,reg_inphase = RegMRNAC(nac_imgC,water_img,fat_img,inphase_img)
     print('Removing coil from CT image...')
-#    com_mask = CreateCTmask(nac_imgC,reg_water,reg_fat)
     CT_imgM = RemoveCTcoil(CT_imgS)
     print('Registering CT images...')
-    rig_CT,aff_CT,aff_CT2,reg_CT,good_inds = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat)
+    rig_CT,aff_CT,aff_CT2,reg_CT,good_inds,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat)
 #    print('Displaying results...')
 #    display_ants([nac_imgC,reg_water,reg_CT])
 #    display_ants_reg(reg_water,reg_CT)
 #    display_ants([reg_water,rig_CT,aff_CT,aff_CT2,reg_CT])
-    print('Saving data...')
-    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_CT,nac_img,good_inds)
+    print('Saving data for subject',subj,'...')
+    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,CT_imgRS,nac_img,good_inds)
     
