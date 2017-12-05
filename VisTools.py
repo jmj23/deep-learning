@@ -76,7 +76,7 @@ def next_slice_m(fig):
     fig.canvas.draw()
 
 #%%
-def multi_slice_viewer0(volume,labels):
+def multi_slice_viewer0(volume,labels=[]):
     fig, ax = plt.subplots()
     if len(volume.shape) != 3:
         print('Volume must be 3D array')
