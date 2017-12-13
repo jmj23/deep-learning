@@ -5,7 +5,8 @@ Created on Tue May 23 10:32:21 2017
 @author: jmj136
 """
 import keras.backend as K
-#import tensorflow as tf
+import tensorflow as tf
+import numpy as np
 
 def jac_met(y_true, y_pred):
     Xr = K.round(y_pred)
@@ -49,3 +50,50 @@ def dice_coef(y_true, y_pred):
 def dice_coef_loss(y_true, y_pred):
     dc = dice_coef(y_true,y_pred)
     return 1 - dc
+
+def ssim_loss(y_true,y_pred):    
+    patches_true = tf.extract_image_patches(y_true, [1,4,4,1],[1,4,4,1],[1,1,1,1],padding='VALID')
+    patches_pred = tf.extract_image_patches(y_pred, [1,4,4,1],[1,4,4,1],[1,1,1,1],padding='VALID')
+    
+#    bs, w, h, c1, c2, c3 = K.int_shape(patches_pred)
+#    patches_pred = K.reshape(patches_pred,[-1,w,h,c1*c2*c3])
+#    patches_true = K.reshape(patches_true,[-1,w,h,c1*c2*c3])
+    
+    u_true = K.mean(patches_true, axis=-1)
+    u_pred = K.mean(patches_pred, axis=-1)
+    var_true = K.var(patches_true, axis=-1)
+    var_pred = K.var(patches_pred, axis=-1)
+    eps = 1e-9
+    std_true = K.sqrt(var_true+eps)
+    std_pred = K.sqrt(var_pred+eps)
+    c1 = 0.01 ** 2
+    c2 = 0.03 ** 2
+    ssim = (2 * u_true * u_pred + c1) * (2 * std_pred * std_true + c2)
+    denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
+    ssim /= denom #no need for clipping, c1 and c2 make the denom non-zero
+    return K.mean((1.0 - ssim) / 2.0)
+
+def weighted_mse(y_true, y_pred):
+    y_true = K.flatten( y_true )
+    y_pred = K.flatten( y_pred )
+
+    bone_mask = K.cast( K.greater( y_true, 1.0 ), 'float32' )
+    air_mask =  K.cast( K.less( y_true, 0.02 ), 'float32' )
+    soft1_mask = K.cast( K.less( y_true, 1 ), 'float32' )
+    soft2_mask = K.cast( K.greater( y_true, 0.02 ), 'float32' )
+    soft_mask = soft1_mask * soft2_mask
+    
+    bone_true = bone_mask * y_true
+    bone_pred = bone_mask * y_pred
+    
+    air_true = air_mask * y_true
+    air_pred = air_mask * y_pred
+    
+    soft_true = soft_mask * y_true
+    soft_pred = soft_mask * y_pred
+    
+    bone_loss = K.mean(K.square(bone_true - bone_pred), axis=-1)
+    air_loss = K.mean(K.square(air_true - air_pred), axis=-1)
+    soft_loss = K.mean(K.square(soft_true - soft_pred), axis=-1)
+    
+    return 1.3*bone_loss + 1.5*air_loss + soft_loss
