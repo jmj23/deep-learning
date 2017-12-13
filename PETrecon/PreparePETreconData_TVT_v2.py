@@ -16,7 +16,7 @@ savepath = 'petrecondata_tvt_v2.hdf5'
 subj_vec = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
 val_num = 3
 test_num = 2
-np.random.seed(seed=1)
+np.random.seed(seed=2)
 
 #%% Inputs
 print('Loading inputs')
@@ -125,7 +125,7 @@ except Exception as e:
         hf.create_dataset("test_targets",  data=test_targets,dtype='f')
 
 #%% augment training data
-
+print('Augmenting training data...')
 # LR flips
 fl_inputs = np.flip(inputs,1)
 fl_targets = np.flip(targets,1)
