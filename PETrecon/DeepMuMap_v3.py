@@ -8,8 +8,8 @@ import sys
 sys.path.insert(0,'/home/jmj136/KerasFiles')
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
-from keras.metrics import mean_absolute_error as mae_metric
-from keras.losses import mean_absolute_error as mae_loss
+#from keras.metrics import mean_absolute_error as mae_metric
+#from keras.losses import mean_absolute_error as mae_loss
 from keras.models import load_model
 from matplotlib import pyplot as plt
 from my_callbacks import Histories
@@ -20,21 +20,24 @@ import os
 from CustomMetrics import ssim_loss, weighted_mse
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
-numEp = 10
+numEp = 30
 b_s = 8
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_v2_{}.hdf5'.format(2)
+model_filepath = 'MuMapModel_v2_{}.hdf5'.format(3)
 # Data path/name
-datapath = 'petrecondata_tvt_v2.hdf5'
+datapath = 'petrecondata_tvt_v3.hdf5'
 
 with h5py.File(datapath,'r') as f:
     x_train = np.array(f.get('train_inputs'))
-    y_train = np.array(f.get('train_targets'))
+    y_reg_train = np.array(f.get('train_reg_targets'))
+    y_class_train = np.array(f.get('train_class_targets'))
     x_val = np.array(f.get('val_inputs'))
-    y_val = np.array(f.get('val_targets'))
+    y_reg_val = np.array(f.get('val_reg_targets'))
+    y_class_val = np.array(f.get('val_class_targets'))
     x_test = np.array(f.get('test_inputs'))
-    y_test = np.array(f.get('test_targets'))    
+    y_reg_test = np.array(f.get('test_reg_targets'))    
+    y_class_test = np.array(f.get('test_class_targets'))    
     
 #%% Model
 from keras.layers import Input, Cropping2D, Conv2D, concatenate
@@ -120,9 +123,9 @@ def BlockModel_reg(samp_input):
     lay_pad = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(lay_act)
         
     # regressor
-    lay_reg = Conv2D(1,(1,1), activation='linear',name='regression_layer')(lay_pad)
+    lay_reg = Conv2D(1,(1,1), activation='linear',name='reg_output')(lay_pad)
     # classifier
-    lay_class = Conv2D(4,(1,1), activation='softmax',name='classification_layer')(lay_pad)
+    lay_class = Conv2D(4,(1,1), activation='softmax',name='class_output')(lay_pad)
     
     return Model(inputs=[lay_input],outputs=[lay_reg,lay_class])
     
@@ -141,25 +144,27 @@ CBs = [checkpoint,earlyStopping,hist]
 print("Generating model")
 RegModel = BlockModel_reg(x_train)
 adopt = optimizers.adam()
-RegModel.compile(loss=weighted_mse, optimizer=adopt,metrics=[mae_metric])
+RegModel.compile(optimizer=adopt,
+                 loss={'reg_output': weighted_mse, 'class_output': 'categorical_crossentropy'},
+                 loss_weights={'reg_output': 1., 'class_output': .5})
 #RegModel.compile(loss=ssim_loss, optimizer=adopt,metrics=[weighted_mse])
 
 #%% training
 print('Starting training')
 
-history = RegModel.fit(x_train, y_train,
-                   batch_size=b_s, epochs=numEp,
-                   validation_data=(x_val,y_val),
-                   verbose=1,
-                   callbacks=CBs)
+history = RegModel.fit(x_train,
+                       {'reg_output': y_reg_train,'class_output':y_class_train},
+                       batch_size=b_s, epochs=numEp,
+                       validation_data=(x_val,{'reg_output': y_reg_val,'class_output':y_class_val}),
+                       verbose=1,
+                       callbacks=CBs)
 
 print('Training complete')
 
 print('Loading best model...')
-RegModel = load_model(model_filepath,custom_objects={'ssim_loss':ssim_loss,
-                                                     'weighted_mse':weighted_mse})
+RegModel = load_model(model_filepath,custom_objects={'weighted_mse':weighted_mse})
 
-score = RegModel.evaluate(x_test,y_test)
+score = RegModel.evaluate(x_test,{'reg_output': y_reg_test,'class_output':y_class_test})
 print("")
 print("Metrics on test data: {}".format(score))
 
@@ -186,12 +191,17 @@ time1 = time.time()
 output = RegModel.predict(x_test,batch_size=pr_bs)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/x_test.shape[0],' ms per slice')
+reg_output = output[0]
+class_output = output[1]
+
 
 val_output = RegModel.predict(x_val,batch_size=pr_bs)
+val_reg_output = val_output[0]
+val_class_output = val_output[1]
 
 from skimage.measure import compare_ssim as ssim
-SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_test[...,0],output[...,0])]
-val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_val[...,0],val_output[...,0])]
+SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_reg_test[...,0],reg_output[...,0])]
+val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_reg_val[...,0],val_reg_output[...,0])]
 
 num_bins = 10
 fig3 = plt.figure()
@@ -200,14 +210,14 @@ plt.show()
 print('Mean SSIM of ', np.mean(SSIMs))
 print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
 
+# process classification result
+val_class_inds = np.argmax(val_class_output,axis=3)
+yval_class_inds = np.argmax(y_class_val,axis=3)
+test_class_inds = np.argmax(class_output,axis=3)
+ytest_class_inds = np.argmax(y_class_test,axis=3)
 
 from VisTools import multi_slice_viewer0
-multi_slice_viewer0(np.c_[x_test[...,0],output[...,0],y_test[...,0]],SSIMs)
-multi_slice_viewer0(np.c_[x_val[...,0],val_output[...,0],y_val[...,0]],val_SSIMs)
+multi_slice_viewer0(np.c_[x_test[...,0],reg_output[...,0],y_reg_test[...,0],ytest_class_inds/3,test_class_inds/3],SSIMs)
+multi_slice_viewer0(np.c_[x_val[...,0],val_reg_output[...,0],y_reg_val[...,0]],val_SSIMs)
 
-# percentage error plot
-eps = 1e-9
-perc_error = np.abs((y_test-output)/(y_test+eps))
-perc_error[y_test<eps]=0
-multi_slice_viewer0(np.c_[x_test[...,0],y_test[...,0],perc_error[...,0]],SSIMs)
-multi_slice_viewer0(perc_error[...,0],SSIMs)
+
