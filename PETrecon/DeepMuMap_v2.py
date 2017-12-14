@@ -8,16 +8,23 @@ import sys
 sys.path.insert(0,'/home/jmj136/KerasFiles')
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
+from keras.metrics import mean_absolute_error as mae_metric
+from keras.losses import mean_absolute_error as mae_loss
 from keras.models import load_model
 from matplotlib import pyplot as plt
 from my_callbacks import Histories
 import numpy as np
 import h5py
 import time
+import os
+from CustomMetrics import ssim_loss, weighted_mse
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
+numEp = 10
+b_s = 8
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_v2_{}.hdf5'.format(1)
+model_filepath = 'MuMapModel_v2_{}.hdf5'.format(2)
 # Data path/name
 datapath = 'petrecondata_tvt_v2.hdf5'
 
@@ -103,11 +110,7 @@ def BlockModel_reg(samp_input):
         lay_deconv_all = Conv2D(16*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
         bn = BatchNormalization()(lay_deconv_all)
         lay_act = ELU(name='elu_d{}'.format(dd))(bn)
-        
-        lay_up = UpSampling2D()(lay_act)
-#        lay_stride = Conv2DTranspose(16*dd,(4,4),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
-#        lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
-        
+        lay_up = UpSampling2D()(lay_act)        
         lay_cleanup = Conv2DTranspose(16*dd, (3, 3),name='cleanup{}_1'.format(dd))(lay_up)
         lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
         lay_cleanup = Conv2D(16*dd, (3,3), padding='same',name='cleanup{}_2'.format(dd))(lay_act)
@@ -117,9 +120,11 @@ def BlockModel_reg(samp_input):
     lay_pad = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(lay_act)
         
     # regressor
-    lay_out = Conv2D(1,(1,1), activation='linear',name='output_layer')(lay_pad)
+    lay_reg = Conv2D(1,(1,1), activation='linear',name='regression_layer')(lay_pad)
+    # classifier
+    lay_class = Conv2D(4,(1,1), activation='softmax',name='classification_layer')(lay_pad)
     
-    return Model(lay_input,lay_out)
+    return Model(inputs=[lay_input],outputs=[lay_reg,lay_class])
     
 #%% callbacks
 earlyStopping = EarlyStopping(monitor='val_loss',patience=16,verbose=1,mode='auto')
@@ -136,12 +141,12 @@ CBs = [checkpoint,earlyStopping,hist]
 print("Generating model")
 RegModel = BlockModel_reg(x_train)
 adopt = optimizers.adam()
-RegModel.compile(loss='MSE', optimizer=adopt)
+RegModel.compile(loss=weighted_mse, optimizer=adopt,metrics=[mae_metric])
+#RegModel.compile(loss=ssim_loss, optimizer=adopt,metrics=[weighted_mse])
 
 #%% training
 print('Starting training')
-numEp = 80
-b_s = 8
+
 history = RegModel.fit(x_train, y_train,
                    batch_size=b_s, epochs=numEp,
                    validation_data=(x_val,y_val),
@@ -151,11 +156,12 @@ history = RegModel.fit(x_train, y_train,
 print('Training complete')
 
 print('Loading best model...')
-RegModel = load_model(model_filepath)
+RegModel = load_model(model_filepath,custom_objects={'ssim_loss':ssim_loss,
+                                                     'weighted_mse':weighted_mse})
 
 score = RegModel.evaluate(x_test,y_test)
 print("")
-print("MSE on test data: {}".format(score))
+print("Metrics on test data: {}".format(score))
 
 #%% plotting
 print('Plotting metrics')
@@ -172,7 +178,7 @@ plt.plot(epochs,history.history['val_loss'],'m-s')
 plt.plot(batches,hist.val_loss,'m-')
 
 plt.show()
-
+#%%
 print('Generating samples')
 # regression result
 pr_bs = np.minimum(16,x_test.shape[0])
@@ -189,7 +195,7 @@ val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_val[...,0],val_output[...,0])]
 
 num_bins = 10
 fig3 = plt.figure()
-n, bins, patches = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
+n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
 plt.show()
 print('Mean SSIM of ', np.mean(SSIMs))
 print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
@@ -198,3 +204,10 @@ print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs)
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],output[...,0],y_test[...,0]],SSIMs)
 multi_slice_viewer0(np.c_[x_val[...,0],val_output[...,0],y_val[...,0]],val_SSIMs)
+
+# percentage error plot
+eps = 1e-9
+perc_error = np.abs((y_test-output)/(y_test+eps))
+perc_error[y_test<eps]=0
+multi_slice_viewer0(np.c_[x_test[...,0],y_test[...,0],perc_error[...,0]],SSIMs)
+multi_slice_viewer0(perc_error[...,0],SSIMs)
