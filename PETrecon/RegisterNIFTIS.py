@@ -11,7 +11,7 @@ import ants
 import numpy as np
 from VisTools import multi_slice_viewer0, registration_viewer
 from scipy.ndimage import morphology as scimorph
-from skimage.morphology import diamond as diastrel
+#from skimage.morphology import diamond as diastrel
 from scipy.ndimage import label, generate_binary_structure
 
 datapath = 'NIFTIs/subj{:03d}_{}.nii'
@@ -50,10 +50,11 @@ def LoadData(datapath,subj):
     water_img = ants.image_read(datapath.format(subj,'WATER'))
     fat_img = ants.image_read(datapath.format(subj,'FAT'))
     inphase_img = ants.image_read(datapath.format(subj,'InPhase'))
+    outphase_img = ants.image_read(datapath.format(subj,'OutPhase'))
     nac_img = ants.image_read(datapath.format(subj,'NAC'))
     CT_img = ants.image_read(datapath.format(subj,'CTAC'))
     CTmac_img = ants.image_read(datapath.format(subj,'CTMAC'))
-    return water_img,fat_img,inphase_img,nac_img,CT_img,CTmac_img
+    return water_img,fat_img,inphase_img,outphase_img,nac_img,CT_img,CTmac_img
 #%% Data processing
 def ProcessImgs(nac_img,CT_img,CTmac_img):
     # clip NAC images at fixed value
@@ -73,14 +74,16 @@ def ProcessImgs(nac_img,CT_img,CTmac_img):
     return nac_imgC,CT_imgS,CTmac_imgC
 
 #%% MR-> NAC  Registration
-def RegMRNAC(nac_imgC,water_img,fat_img,inphase_img):
+def RegMRNAC(nac_imgC,water_img,fat_img,inphase_img,outphase_img):
     MR_tx = ants.registration(fixed=nac_imgC,moving=water_img,type_of_transform='Affine')
     reg_water = MR_tx['warpedmovout']
     reg_fat = ants.apply_transforms(fixed=nac_imgC, moving=fat_img,
-                                    transformlist=MR_tx['fwdtransforms'] )
+                                    transformlist=MR_tx['fwdtransforms'])
     reg_inphase = ants.apply_transforms(fixed=nac_imgC, moving=inphase_img,
-                                        transformlist=MR_tx['fwdtransforms'] )
-    return reg_water,reg_fat,reg_inphase
+                                        transformlist=MR_tx['fwdtransforms'])
+    reg_outphase = ants.apply_transforms(fixed=nac_imgC, moving=outphase_img,
+                                        transformlist=MR_tx['fwdtransforms'])
+    return reg_water,reg_fat,reg_inphase, reg_outphase
 
 #%% Mask CT image
 def RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC):
@@ -162,37 +165,38 @@ def RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac):
     
     return rig_CT,aff_CT2,syn_CT,CT_imgRS
 #%% Export data
-def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_CT,nac_img):
+def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,reg_CT,nac_img):
     ants.image_write(reg_water,savepath.format(subj,'WATER'))
     ants.image_write(reg_fat,savepath.format(subj,'FAT'))
     ants.image_write(reg_inphase,savepath.format(subj,'InPhase'))
+    ants.image_write(reg_outphase,savepath.format(subj,'OutPhase'))
     ants.image_write(reg_CT,savepath.format(subj,'CTAC'))
     ants.image_write(nac_img,savepath.format(subj,'NAC'))
     
 #%% Main Script
 
-#subjectlist = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-subjectlist = [17]
+subjectlist = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+#subjectlist = [17]
 
 for subj in subjectlist:
     print('Loading data...')
-    water_img,fat_img,inphase_img,nac_img,CT_img,CTmac_img = LoadData(datapath,subj)
+    water_img,fat_img,inphase_img,outphase_img,nac_img,CT_img,CTmac_img = LoadData(datapath,subj)
     print('Processing images...')
     nac_imgC,CT_imgS,CTmac_imgC = ProcessImgs(nac_img,CT_img,CTmac_img)
     print('Registering MR images...')
-    reg_water,reg_fat,reg_inphase = RegMRNAC(nac_imgC,water_img,fat_img,inphase_img)
+    reg_water,reg_fat,reg_inphase,reg_outphase = RegMRNAC(nac_imgC,water_img,fat_img,inphase_img,outphase_img)
     print('Removing coil from CT image...')
     CT_imgM,rig_mac = RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC)
     print('Registering CT images...')
     rig_CT,aff_CT2,reg_CT,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac)
-    print('Displaying results...')
-    display_ants([nac_imgC,reg_water,reg_CT])
-    display_ants_reg(reg_water,reg_CT)
-    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
+#    print('Displaying results...')
+#    display_ants([nac_imgC,reg_water,reg_CT])
+#    display_ants_reg(reg_water,reg_CT)
+#    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
     print('Saving data for subject',subj,'...')
-    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,CT_imgRS,nac_img)
+    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,CT_imgRS,nac_img)
     
 #%%
-good_inds= np.arange(16,71)
-np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
-print('Indices saved')
+#good_inds= np.arange(16,71)
+#np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
+#print('Indices saved')
