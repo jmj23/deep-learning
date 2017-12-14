@@ -10,6 +10,7 @@ from scipy.ndimage import median_filter
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage.draw import polygon
 import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import psutil
 import configparser
 import scipy.io as spio
