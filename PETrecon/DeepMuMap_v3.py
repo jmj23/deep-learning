@@ -17,14 +17,15 @@ import numpy as np
 import h5py
 import time
 import os
-from CustomMetrics import ssim_loss, weighted_mse
+from CustomMetrics import weighted_mse, dice_coef_multi
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 numEp = 30
-b_s = 8
+b_s = 4
+dual_output = True
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_v2_{}.hdf5'.format(3)
+model_filepath = 'MuMapModel_v2_{}.hdf5'.format(4)
 # Data path/name
 datapath = 'petrecondata_tvt_v3.hdf5'
 
@@ -45,7 +46,7 @@ from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D
 from keras.layers.advanced_activations import ELU
 from keras.models import Model
-def BlockModel_reg(samp_input):
+def BlockModel_reg(samp_input,dual_output):
     lay_input = Input(shape=(samp_input.shape[1:]),name='input_layer')
     
     padamt = 1
@@ -124,15 +125,19 @@ def BlockModel_reg(samp_input):
         
     # regressor
     lay_reg = Conv2D(1,(1,1), activation='linear',name='reg_output')(lay_pad)
-    # classifier
-    lay_class = Conv2D(4,(1,1), activation='softmax',name='class_output')(lay_pad)
-    
-    return Model(inputs=[lay_input],outputs=[lay_reg,lay_class])
+    if dual_output:
+        # classifier
+        lay_class = Conv2D(4,(1,1), activation='softmax',name='class_output')(lay_pad)
+        returnModel = Model(inputs=[lay_input],outputs=[lay_reg,lay_class])
+    else:
+        returnModel = Model(lay_input,lay_reg)
+        
+    return returnModel
     
 #%% callbacks
-earlyStopping = EarlyStopping(monitor='val_loss',patience=16,verbose=1,mode='auto')
+earlyStopping = EarlyStopping(monitor='val_reg_output_loss',patience=10,verbose=1,mode='auto')
 
-checkpoint = ModelCheckpoint(model_filepath, monitor='val_loss',verbose=0,
+checkpoint = ModelCheckpoint(model_filepath, monitor='val_reg_output_loss',verbose=0,
                              save_best_only=True, save_weights_only=False,
                              mode='auto', period=1)
 
@@ -142,11 +147,15 @@ CBs = [checkpoint,earlyStopping,hist]
 
 #%% prepare model for training
 print("Generating model")
-RegModel = BlockModel_reg(x_train)
+
+RegModel = BlockModel_reg(x_train,dual_output)
 adopt = optimizers.adam()
-RegModel.compile(optimizer=adopt,
-                 loss={'reg_output': weighted_mse, 'class_output': 'categorical_crossentropy'},
-                 loss_weights={'reg_output': 1., 'class_output': .5})
+if dual_output:
+    RegModel.compile(optimizer=adopt,
+                 loss={'reg_output': weighted_mse, 'class_output': "categorical_crossentropy"},
+                 loss_weights={'reg_output': 1., 'class_output': .3})
+else:
+    RegModel.compile(optimizer=adopt,loss= weighted_mse)
 #RegModel.compile(loss=ssim_loss, optimizer=adopt,metrics=[weighted_mse])
 
 #%% training
@@ -162,7 +171,8 @@ history = RegModel.fit(x_train,
 print('Training complete')
 
 print('Loading best model...')
-RegModel = load_model(model_filepath,custom_objects={'weighted_mse':weighted_mse})
+RegModel = load_model(model_filepath,custom_objects={'weighted_mse':weighted_mse,
+                                                     'dice_coef_multi':dice_coef_multi})
 
 score = RegModel.evaluate(x_test,{'reg_output': y_reg_test,'class_output':y_class_test})
 print("")
@@ -218,6 +228,6 @@ ytest_class_inds = np.argmax(y_class_test,axis=3)
 
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],reg_output[...,0],y_reg_test[...,0],ytest_class_inds/3,test_class_inds/3],SSIMs)
-multi_slice_viewer0(np.c_[x_val[...,0],val_reg_output[...,0],y_reg_val[...,0]],val_SSIMs)
+multi_slice_viewer0(np.c_[x_val[...,0],val_reg_output[...,0],y_reg_val[...,0],yval_class_inds/3,val_class_inds/3],val_SSIMs)
 
 

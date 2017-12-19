@@ -22,10 +22,10 @@ np.random.seed(seed=2)
 
 y,x = np.ogrid[-3: 3+1, -3: 3+1]
 strel = x**2+y**2 <= 3**2
-
+eps = 1e-9
 #%% Inputs
 print('Loading inputs')
-eps = 1e-9
+
 subj = subj_vec[0]
 wims = np.rollaxis(ants.image_read(datapath.format(subj,'WATER')).numpy(),2,0)
 fims = np.rollaxis(ants.image_read(datapath.format(subj,'FAT')).numpy(),2,0)
@@ -72,7 +72,7 @@ for subj in subj_vec[1:]:
         im /= np.max(im)
     for im in outims:
         im[im<0]=0
-        im /= np.max(im)
+        im /= (np.max(im)+eps)
     for im in nacims:
         im[im<0]=0
         im[im>1500] = 1500
@@ -129,8 +129,7 @@ def MakeCTLabels(CTims):
 #%%
 print('Loading targets')
 
-#subj = subj_vec[0]
-subj = 8
+subj = subj_vec[0]
 CTims = np.rollaxis(ants.image_read(datapath.format(subj,'CTAC')).numpy(),2,0)
 good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
 CTims = CTims[good_inds]

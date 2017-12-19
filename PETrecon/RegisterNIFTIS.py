@@ -176,7 +176,7 @@ def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,reg_CT,nac
 #%% Main Script
 
 subjectlist = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-#subjectlist = [17]
+#subjectlist = [4]
 
 for subj in subjectlist:
     print('Loading data...')
@@ -189,14 +189,15 @@ for subj in subjectlist:
     CT_imgM,rig_mac = RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC)
     print('Registering CT images...')
     rig_CT,aff_CT2,reg_CT,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac)
-#    print('Displaying results...')
-#    display_ants([nac_imgC,reg_water,reg_CT])
-#    display_ants_reg(reg_water,reg_CT)
-#    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
+    print('Displaying results...')
+    display_ants([nac_imgC,reg_water,reg_CT])
+    display_ants_reg(reg_water,reg_CT)
+    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
     print('Saving data for subject',subj,'...')
     SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,CT_imgRS,nac_img)
+#    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,nac_img,nac_img)
     
 #%%
-#good_inds= np.arange(16,71)
-#np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
-#print('Indices saved')
+good_inds= np.arange(16,71)
+np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
+print('Indices saved')

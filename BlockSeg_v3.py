@@ -17,7 +17,6 @@ import json
 import Kmodels
 import time
 
-
 #%%
 # Model Save Path/name
 model_filepath = 'BlockSegModel_v4.hdf5'

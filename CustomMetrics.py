@@ -97,3 +97,9 @@ def weighted_mse(y_true, y_pred):
     soft_loss = K.mean(K.square(soft_true - soft_pred), axis=-1)
     
     return 1.3*bone_loss + 1.5*air_loss + soft_loss
+
+def dice_coef_multi(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return 1-(2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)

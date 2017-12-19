@@ -10,6 +10,7 @@ from scipy.ndimage import median_filter
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage.draw import polygon
 import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import psutil
 import configparser
 import scipy.io as spio
@@ -280,12 +281,14 @@ class MainApp(QtBaseClass1, Ui_MainWindow):
         self.ui.progBar.setRange(0,0)
         self.ui.progBar.setVisible(True)
         QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.WaitCursor))
-        self.load_thread = ModelLoadThread(data_path)
+        graph = keras.backend.tf.get_default_graph()
+        self.load_thread = ModelLoadThread(data_path,graph)
         self.load_thread.finished.connect(self.loadModelFinish)
         self.load_thread.model_sig.connect(self.loadModelModel)
         self.load_thread.error_sig.connect(self.loadModelError)
-        
+        print('Starting model load thread...')
         self.load_thread.start()
+        
     def load_model_weights(self):
         try:
             # Open model weights import dialog
@@ -2391,13 +2394,10 @@ class ModelLoadThread(QThread):
         self.filename = filename
         self.graph = graph
     def __del__(self):
-        print('hi 3')
+        print('thread deleted')
 
     def run(self):
         try:
-            print('hi')
-            import keras
-            self.graph = keras.backend.tf.get_default_graph()
             # load model
             try:
                 with self.graph.as_default():
@@ -2416,7 +2416,7 @@ class ModelLoadThread(QThread):
         except Exception as e:
             print(e)
             self.error_sig.emit(e)
-            print('hi 2')
+            print('thread error')
             self.quit()
 #%%
 class SegThread(QThread):
