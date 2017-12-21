@@ -5,7 +5,8 @@ Created on Wed May 31 14:06:34 2017
 @author: JMJ136
 """
 import sys
-sys.path.insert(0,'/home/jmj136/KerasFiles')
+import os
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 #from keras.metrics import mean_absolute_error as mae_metric
@@ -16,9 +17,8 @@ from my_callbacks import Histories
 import numpy as np
 import h5py
 import time
-import os
 from CustomMetrics import weighted_mse, dice_coef_multi
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 numEp = 30
 b_s = 4
