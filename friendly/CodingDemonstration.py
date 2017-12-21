@@ -134,14 +134,15 @@ print('Test accuracy:', score[1])
 # Let's dislay some of our test images and see how the model does
 # grab the first 20 images and display them in a panel
 display_ims = np.rollaxis(x_test[:10,...,0],0,2).reshape(28,10*28)
+fig0 = plt.figure(0)
 plt.imshow(display_ims,cmap='gray')
 # Now, get the predictions on those same images and print them out
 # First, get the predictions. Remember that these will come in the form of
 # probabilities for each class for each sample
-predictions = model.predict(x_test[:10])
+probabilities = model.predict(x_test[:10])
 # Now we find the maximum probability of each sample using a Numpy
 # function called argmax, which returns indices where maximum accurs
-max_prob = np.argmax(predictions,axis=1)
+predictions = np.argmax(probabilities,axis=1)
 # Alternatively, we can have Keras do this for us with 
 # the predict_classes method
 predictions = model.predict_classes(x_test[:10])
@@ -232,9 +233,9 @@ y_test2 = ConvertYdata(x_test,y_test)
 # It's import to make sure our inputs match up with our targets
 # Let's display them side by side to make sure it's right
 testnum = 8
-fig1 = plt.figure(1)
+fig3 = plt.figure(3)
 plt.imshow(np.c_[x_train2[testnum,...,0],np.argmax(y_train2[testnum],axis=2)-1],cmap='gray')
-fig2 = plt.figure(2)
+fig4 = plt.figure(4)
 plt.imshow(np.c_[x_test2[testnum,...,0],np.argmax(y_test2[testnum],axis=2)-1],cmap='gray')
 
 # So far so good! Our data is now ready for training!
@@ -312,10 +313,10 @@ model2.fit(x_train2, y_train2,
 # We'll display the prediction and truth next to each other
 # and see how it faired
 predictions2 = model2.predict_classes(x_test2[:2])
-fig1 = plt.figure(1)
+fig5 = plt.figure(5)
 plt.imshow(np.c_[predictions2[0]-1,np.argmax(y_test2[0],axis=2)-1],cmap='gray')
-# Ooh... not great.
-# Actually, pretty awful.
+# Ooh... not great. Results may vary from
+# simply mediocre to downright terrible
 # It turn out that segmenting an image 4 times larger
 # is much more difficult than simply classifying
 # the small images.
