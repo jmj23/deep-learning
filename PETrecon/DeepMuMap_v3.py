@@ -179,20 +179,20 @@ print("")
 print("Metrics on test data: {}".format(score))
 
 #%% plotting
-print('Plotting metrics')
-step = np.minimum(b_s/x_train.shape[0],1)
-actEpochs = len(history.history['loss'])
-epochs = np.arange(1,actEpochs+1)
-actBatches = len(hist.loss)
-batches = np.arange(1,actBatches+1)* actEpochs/(actBatches+1)
-
-fig2 = plt.figure(1,figsize=(12.0, 6.0));
-plt.plot(epochs,history.history['loss'],'r-s')
-plt.plot(batches,hist.loss,'r-')
-plt.plot(epochs,history.history['val_loss'],'m-s')
-plt.plot(batches,hist.val_loss,'m-')
-
-plt.show()
+#print('Plotting metrics')
+#step = np.minimum(b_s/x_train.shape[0],1)
+#actEpochs = len(history.history['loss'])
+#epochs = np.arange(1,actEpochs+1)
+#actBatches = len(hist.loss)
+#batches = np.arange(1,actBatches+1)* actEpochs/(actBatches+1)
+#
+#fig2 = plt.figure(1,figsize=(12.0, 6.0));
+#plt.plot(epochs,history.history['loss'],'r-s')
+#plt.plot(batches,hist.loss,'r-')
+#plt.plot(epochs,history.history['val_loss'],'m-s')
+#plt.plot(batches,hist.val_loss,'m-')
+#
+#plt.show()
 #%%
 print('Generating samples')
 # regression result
