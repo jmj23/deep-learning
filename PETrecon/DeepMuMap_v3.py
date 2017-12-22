@@ -25,9 +25,9 @@ b_s = 4
 dual_output = True
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_v2.hdf5'
+model_filepath = 'MuMapModel_v3.hdf5'
 # Data path/name
-datapath = 'petrecondata_tvt_v3.hdf5'
+datapath = 'petrecondata_tvt_v4.hdf5'
 
 with h5py.File(datapath,'r') as f:
     x_train = np.array(f.get('train_inputs'))
