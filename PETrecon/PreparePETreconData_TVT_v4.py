@@ -81,8 +81,18 @@ for subj in subj_vec[1:]:
     new_inputs = inputarray[good_inds]
     inputs = np.concatenate((inputs,new_inputs),axis=0)
     sliceNums.append(new_inputs.shape[0])
-#%% 
-#%% CT segmentation method
+#%% HU-LAC conversion
+def ConvertToLAC(CTims):
+    muMap = np.copy(CTims)
+    # old conversion
+    #muMap[CTims<=0] = (1+CTims[CTims<=0]/1000)*0.096
+    #muMap[CTims>0] = (1+CTims[CTims>0]*6.4*10e-4)*0.096
+    # new conversion
+    muMap[CTims<=30] = 9.6e-5*(CTims[CTims<=30]+1024)
+    muMap[CTims>30]= 5.64e-5*(CTims[CTims>30]+1024)+4.08e-2
+    muMap[muMap<0] = 0
+    return muMap*5
+#%% CT segmentation function
 def MakeCTLabels(CTims):
     # make classification array
     soft_tis = np.zeros(CTims.shape,dtype=np.bool)
@@ -135,15 +145,7 @@ good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(n
 CTims = CTims[good_inds]
 
 # convert HU to LAC
-muMap = np.copy(CTims)
-# old conversion
-#muMap[CTims<=0] = (1+CTims[CTims<=0]/1000)*0.096
-#muMap[CTims>0] = (1+CTims[CTims>0]*6.4*10e-4)*0.096
-# new conversion
-muMap[CTims<=30] = 9.6e-5*(CTims[CTims<=30]+1000)
-muMap[CTims>30]= 5.64e-5*(CTims[CTims>30]+1000)+4.08e-2
-muMap[muMap<0] = 0
-muMap *= 5
+muMap = ConvertToLAC(CTims)
 
 reg_targets = muMap[...,np.newaxis]
 class_targets = MakeCTLabels(CTims)
@@ -153,11 +155,7 @@ for subj in subj_vec[1:]:
     CTims = np.rollaxis(ants.image_read(datapath.format(subj,'CTAC')).numpy(),2,0)
     good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
     CTims = CTims[good_inds]
-    muMap = np.copy(CTims)
-    muMap[CTims<=0] = (1+CTims[CTims<=0]/1000)*0.096
-    muMap[CTims>0] = (1+CTims[CTims>0]*6.4*10e-4)*0.096
-    muMap[muMap<0] = 0
-    muMap *=5
+    muMap = ConvertToLAC(CTims)
     new_reg_targets = muMap[...,np.newaxis]
     # make classification array
     new_class_targets = MakeCTLabels(CTims)
