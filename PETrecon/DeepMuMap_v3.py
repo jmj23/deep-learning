@@ -25,7 +25,7 @@ b_s = 4
 dual_output = True
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_v2_{}.hdf5'.format(4)
+model_filepath = 'MuMapModel_v2.hdf5'
 # Data path/name
 datapath = 'petrecondata_tvt_v3.hdf5'
 
