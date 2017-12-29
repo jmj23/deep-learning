@@ -31,7 +31,7 @@ datapath = 'DataSelectionData.hdf5'
 model_filepath = 'SegModel.hdf5'
 
 # number of epochs (iterations) to train
-numEp = 5
+numEp = 30
 
 # amount of data to use as validation data
 val_split = 0.20
@@ -212,9 +212,9 @@ if __name__ == "__main__":
     print("Data loaded.")
     
     #Setup loop
-    numRep = 1
+    numRep = 8
     # Make array of data amounts
-    a = np.linspace(.1,.2,2)
+    a = np.linspace(.1,1,10)
     amts = np.empty((2*a.size), dtype=a.dtype)
     amts[0::2] = a
     amts[1::2] = a
@@ -231,7 +231,6 @@ if __name__ == "__main__":
     
     for _ in range(numRep):
         for it in range(numIter):
-            time1 = time.time()
             print("Splitting data")
             x_train,y_train,x_val,y_val=SplitData(x_data,y_data,val_split,CumSliceArray,fraction_of_subjects=amts[it])
             
@@ -246,17 +245,20 @@ if __name__ == "__main__":
             CBs = SetCallbacks()
             
             print('Starting training...')
+            time1 = time.time()
             b_s = 16
-            maxEpoch = np.round(numEp/amts[it]*(2-augs[it])).astype(np.int)
+            maxEpoch = 100#np.round(numEp/amts[it]*(2-augs[it])).astype(np.int)
+            print(x_train.shape[0],'Training Slices')#,maxEpoch,'Maximum Epochs')
             history = SegModel.fit(x_train, y_train,
                                batch_size=b_s, epochs=maxEpoch,
                                validation_data=(x_val,y_val),
-                               verbose=1,callbacks=CBs)
+                               verbose=0,callbacks=CBs)
             
             print('Training Complete')
             time2 = time.time()
             m, s = divmod(time2-time1, 60)
             h, m = divmod(m, 60)
+            print('Total epochs:',len(history.epoch))
             print('Time elapsed: {:0.0f}:{:02.0f}:{:02.0f}'.format(h,m,s))
             
             print('Loading best model')
@@ -275,7 +277,7 @@ if __name__ == "__main__":
     fig1 = plt.figure(1,figsize=(12.0, 6.0));
     plt.plot(np.round(results[0::2,0]*99),results[0::2,2],'ro')
     plt.plot(np.round(results[1::2,0]*99),results[1::2,2],'bo')
-    plt.ylim([0.6,1])
+    plt.ylim([0.9,1])
     plt.title('Dice Score vs Number of Subjects used')
     plt.legend(['No data augmentation','Data Augmentation'], loc='lower left')
     plt.show()
