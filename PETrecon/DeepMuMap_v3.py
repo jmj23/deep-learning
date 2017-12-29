@@ -5,7 +5,8 @@ Created on Wed May 31 14:06:34 2017
 @author: JMJ136
 """
 import sys
-sys.path.insert(0,'/home/jmj136/KerasFiles')
+import os
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 #from keras.metrics import mean_absolute_error as mae_metric
@@ -16,18 +17,17 @@ from my_callbacks import Histories
 import numpy as np
 import h5py
 import time
-import os
 from CustomMetrics import weighted_mse, dice_coef_multi
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 numEp = 30
 b_s = 4
 dual_output = True
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_v2_{}.hdf5'.format(4)
+model_filepath = 'MuMapModel_v3.hdf5'
 # Data path/name
-datapath = 'petrecondata_tvt_v3.hdf5'
+datapath = 'petrecondata_tvt_v4.hdf5'
 
 with h5py.File(datapath,'r') as f:
     x_train = np.array(f.get('train_inputs'))
@@ -179,20 +179,20 @@ print("")
 print("Metrics on test data: {}".format(score))
 
 #%% plotting
-print('Plotting metrics')
-step = np.minimum(b_s/x_train.shape[0],1)
-actEpochs = len(history.history['loss'])
-epochs = np.arange(1,actEpochs+1)
-actBatches = len(hist.loss)
-batches = np.arange(1,actBatches+1)* actEpochs/(actBatches+1)
-
-fig2 = plt.figure(1,figsize=(12.0, 6.0));
-plt.plot(epochs,history.history['loss'],'r-s')
-plt.plot(batches,hist.loss,'r-')
-plt.plot(epochs,history.history['val_loss'],'m-s')
-plt.plot(batches,hist.val_loss,'m-')
-
-plt.show()
+#print('Plotting metrics')
+#step = np.minimum(b_s/x_train.shape[0],1)
+#actEpochs = len(history.history['loss'])
+#epochs = np.arange(1,actEpochs+1)
+#actBatches = len(hist.loss)
+#batches = np.arange(1,actBatches+1)* actEpochs/(actBatches+1)
+#
+#fig2 = plt.figure(1,figsize=(12.0, 6.0));
+#plt.plot(epochs,history.history['loss'],'r-s')
+#plt.plot(batches,hist.loss,'r-')
+#plt.plot(epochs,history.history['val_loss'],'m-s')
+#plt.plot(batches,hist.val_loss,'m-')
+#
+#plt.show()
 #%%
 print('Generating samples')
 # regression result
