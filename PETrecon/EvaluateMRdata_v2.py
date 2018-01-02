@@ -26,7 +26,7 @@ RegModel = load_model("MuMapModel_v3_best.hdf5",
 # Loop over all subjects
 for ii in range(len(subj_vec)):
     #%% Inputs
-    subj = subj_vec[0]
+    subj = subj_vec[ii]
     print('Processing subject',subj)
     wims = np.rollaxis(ants.image_read(datapath.format(subj,'WATER')).numpy(),2,0)
     fims = np.rollaxis(ants.image_read(datapath.format(subj,'FAT')).numpy(),2,0)
@@ -61,7 +61,7 @@ for ii in range(len(subj_vec)):
     class_muMap = np.zeros(class_inds.shape)
     class_muMap[class_inds==1] = 0.001795 # lungs
     class_muMap[class_inds==2] = 0.01 # soft tissue
-    class_muMap[class_inds==3] = 0.0151 # bone
+    class_muMap[class_inds==3] = 0.0112 # bone
     
     #%% Write output
     # convert to ants images
