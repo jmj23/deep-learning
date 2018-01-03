@@ -12,6 +12,7 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
 import tensorflow as tf
 import time 
+import numpy as np
 sess = tf.InteractiveSession()
 
 def weight_variable(shape):
@@ -60,6 +61,7 @@ b_fc2 = bias_variable([10])
 
 y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 
+prediction = tf.argmax(tf.nn.softmax(y_conv),1)
 cross_entropy = tf.reduce_mean(
     tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
@@ -69,16 +71,33 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 time1 = time.time()
 numSteps = 1000
 with tf.Session() as sess:
-  sess.run(tf.global_variables_initializer())
-  for i in range(numSteps):
-    batch = mnist.train.next_batch(50)
-    if i % 100 == 0:
-      train_accuracy = accuracy.eval(feed_dict={
-          x: batch[0], y_: batch[1], keep_prob: 1.0})
-      print('step %d, training accuracy %g' % (i, train_accuracy))
-    train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
-  time2 = time.time()
-  print('test accuracy %g' % accuracy.eval(feed_dict={
+    sess.run(tf.global_variables_initializer())
+    for i in range(numSteps):
+        batch = mnist.train.next_batch(50)
+        if i % 100 == 0:
+            train_accuracy = accuracy.eval(feed_dict={
+                    x: batch[0], y_: batch[1], keep_prob: 1.0})
+            print('step %d, training accuracy %g' % (i, train_accuracy))
+        train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
+    time2 = time.time()
+    print('test accuracy %g' % accuracy.eval(feed_dict={
       x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
+    saver = tf.train.Saver()
+    save_path = saver.save(sess, "/home/jmj136/deep-learning/MNIST-model.ckpt")
 tps = 1000*(time2-time1)/numSteps
 print('Time per step: {:.02f} ms'.format(tps))
+
+with tf.Session() as sess:
+    sess.run(tf.local_variables_initializer())
+    saver = tf.train.Saver()
+    ckpt = tf.train.get_checkpoint_state("/home/jmj136/deep-learning/")
+    if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+        saver.restore(sess, ckpt.model_checkpoint_path)
+    batch = mnist.train.next_batch(50)
+    predictions = prediction.eval(feed_dict={
+          x: batch[0], y_: batch[1], keep_prob: 1.0})
+    print(predictions)
+truths = np.argmax(batch[1],axis=1)
+print(truths)
+    
+    
