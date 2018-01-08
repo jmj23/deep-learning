@@ -10,30 +10,31 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 from keras.models import load_model
+from keras.metrics import mean_absolute_error 
 from matplotlib import pyplot as plt
 from my_callbacks import Histories
 import numpy as np
 import h5py
 import time
 from CustomMetrics import weighted_mae
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
-numEp = 2
+numEp = 4
 b_s = 4
 dual_output = True
 #%%
 # Model Save Path/name
 model_filepath = 'LowDosePETModel_v1.hdf5'
 # Data path/name
-datapath = 'lowdosePETdata.hdf5'
-
+datapath = 'lowdosePETdata_v2.hdf5'
+print('Loading data...')
 with h5py.File(datapath,'r') as f:
     x_train = np.array(f.get('train_inputs'))
-    y_train = np.array(f.get('train_reg_targets'))
+    y_train = np.array(f.get('train_targets'))
     x_val = np.array(f.get('val_inputs'))
-    y_val = np.array(f.get('val_reg_targets'))
+    y_val = np.array(f.get('val_targets'))
     x_test = np.array(f.get('test_inputs'))
-    y_test = np.array(f.get('test_reg_targets')) 
+    y_test = np.array(f.get('test_targets')) 
     
 #%% Model
 from keras.layers import Input, Cropping2D, Conv2D, concatenate
@@ -121,9 +122,10 @@ def BlockModel_reg(samp_input):
     return Model(lay_input,lay_reg)
     
 #%% callbacks
-earlyStopping = EarlyStopping(monitor='val_reg_output_loss',patience=10,verbose=1,mode='auto')
+print('Setting callbacks...')
+earlyStopping = EarlyStopping(monitor='val_loss',patience=10,verbose=1,mode='auto')
 
-checkpoint = ModelCheckpoint(model_filepath, monitor='val_reg_output_loss',verbose=0,
+checkpoint = ModelCheckpoint(model_filepath, monitor='val_loss',verbose=0,
                              save_best_only=True, save_weights_only=False,
                              mode='auto', period=1)
 
@@ -132,14 +134,14 @@ hist = Histories()
 CBs = [checkpoint,earlyStopping,hist]
 
 #%% prepare model for training
-print("Generating model")
+print("Generating model...")
 
 RegModel = BlockModel_reg(x_train)
 adopt = optimizers.adam()
-RegModel.compile(optimizer=adopt,loss= weighted_mae)
+RegModel.compile(optimizer=adopt,loss= weighted_mae, metrics= [mean_absolute_error])
 
 #%% training
-print('Starting training')
+print('Starting training...')
 
 history = RegModel.fit(x_train,y_train,
                        batch_size=b_s, epochs=numEp,
@@ -187,12 +189,14 @@ from skimage.measure import compare_ssim as ssim
 SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_test[...,0],test_output[...,0])]
 val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_val[...,0],val_output[...,0])]
 
-num_bins = 10
-fig3 = plt.figure()
-n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
-plt.show()
-print('Mean SSIM of ', np.mean(SSIMs))
-print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
+# Plot histogram of SSIMs
+#num_bins = 10
+#fig3 = plt.figure()
+#n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
+#plt.show()
+print('Mean SSIM of', np.mean(SSIMs))
+print('Median SSIM of', np.median(SSIMs))
+print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3))
 
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
