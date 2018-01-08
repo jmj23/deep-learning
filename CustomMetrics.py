@@ -98,6 +98,31 @@ def weighted_mse(y_true, y_pred):
     
     return 1.3*bone_loss + 1.5*air_loss + soft_loss
 
+def weighted_mae(y_true, y_pred):
+    y_true = K.flatten( y_true )
+    y_pred = K.flatten( y_pred )
+
+    tis_mask1 = K.cast( K.greater( y_true, 0.1 ), 'float32' )
+    tis_mask2 = K.cast( K.less( y_true, 1. ), 'float32' )
+    tis_mask = tis_mask1 * tis_mask2
+    les_mask =  K.cast( K.greater(y_true,1.), 'float32' )
+    air_mask =  K.cast( K.less( y_true, 0.1 ), 'float32' )
+    
+    tis_true = tis_mask * y_true
+    tis_pred = tis_mask * y_pred
+    
+    air_true = air_mask * y_true
+    air_pred = air_mask * y_pred
+    
+    les_true = les_mask * y_true
+    les_pred = les_mask * y_pred
+    
+    tis_loss = K.mean(K.abs(tis_true - tis_pred), axis=-1)
+    air_loss = K.mean(K.abs(air_true - air_pred), axis=-1)
+    les_loss = K.mean(K.abs(les_true - les_pred), axis=-1)
+    
+    return .5*air_loss + 1.5*tis_loss + 2 * les_loss
+
 def dice_coef_multi(y_true, y_pred):
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
