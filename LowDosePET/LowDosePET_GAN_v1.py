@@ -19,9 +19,6 @@ import time
 from CustomMetrics import weighted_mae
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
-numEp = 4
-b_s = 4
-dual_output = True
 #%%
 # Model Save Path/name
 model_filepath = 'LowDosePET_GAN_v1.hdf5'
@@ -192,6 +189,17 @@ DisModel.compile(optimizer=adopt,loss='binary_cross_entropy')
 
 #%% training
 print('Starting training...')
+b_s = 8
+batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+cond_batch = x_train[batch_inds,...]
+real_batch = y_train[batch_inds,...]
+fake_batch = GenModel.predict(cond_batch,batch_size=b_s)
+y_batch = np.ones([2*b_s, 1])
+y_batch[b_s:, :] = 0
+x_batch = np.concatenate((real_batch,fake_batch))
+cond_batch2 = np.concatenate((cond_batch,cond_batch))
+DisModel.train_on_batch()
+
 
 print('Training complete')
 #%%

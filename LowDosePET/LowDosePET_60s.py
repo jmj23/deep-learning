@@ -21,7 +21,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 numEp = 40
 b_s = 4
-dual_output = True
+
 #%%
 # Model Save Path/name
 model_filepath = 'LowDosePETModel_60s.hdf5'
@@ -185,6 +185,9 @@ print('If run with Spyder, sample outputs will plot now')
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
 
-# Save to nii file
-
+#Export to NIFTI
+import nibabel as nib
+testsubj1 = np.rollaxis(np.rollaxis(test_output[:89,...,0],2,0),2,0)
+output_img = nib.Nifti1Image(testsubj1, np.eye(4))
+output_img.to_filename('subj014_simFullDosePET_60s.nii')
 
