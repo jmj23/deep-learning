@@ -19,7 +19,7 @@ import time
 from CustomMetrics import weighted_mae
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
-numEp = 4
+numEp = 40
 b_s = 4
 dual_output = True
 #%%
