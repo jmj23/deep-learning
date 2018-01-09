@@ -11,7 +11,7 @@ import nibabel as nib
 import os
 import sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-savepath = 'lowdosePETdata_v2.hdf5'
+savepath = 'lowdosePETdata_60s.hdf5'
 
 train_subj_vec = [3,5,7,8,9,10,11,12,13,15,17]
 val_subj_vec = [2, 16]
@@ -19,13 +19,13 @@ test_subj_vec = [14, 4, 6]
 np.random.seed(seed=2)
 eps = 1e-8
 
-normfac = 10000
+normfac = 20000
 #%% Training data loading functions
 # Inputs
 def load_training_input(subj):
     waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
     fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
-    LDpath = 'lowdose/volunteer{:03d}_lowdose.nii.gz'.format(subj)
+    LDpath = 'lowdose_60s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
     LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
     frame1 = LDims[0]
@@ -42,7 +42,7 @@ def load_training_input(subj):
         im /= (np.max(im)+eps)
     inputs = np.stack((frame1,wims,fims),axis=3)
     
-    for fnum in range(1,5):
+    for fnum in range(1,LDims.shape[0]):
         frame = LDims[fnum]
         for im in frame:
             im[im<0]=0
@@ -95,8 +95,8 @@ for subj in train_subj_vec[1:]:
 #%% augment training data
 print('Augmenting training data...')
 # LR flips
-fl_inputs = np.flip(inputs,1)
-fl_targets = np.flip(targets,1)
+fl_inputs = np.flip(inputs,2)
+fl_targets = np.flip(targets,2)
 
 # gamma corrections
 gammas = .5 + np.random.rand(inputs.shape[0])
@@ -155,11 +155,11 @@ def load_eval_input(subj,frame=1):
     wims = np.rot90(np.rollaxis(nib.load(waterpath.format(subj)).get_data(),2,0),-1,axes=(1,2))
     for im in wims:
         im[im<0] = 0
-        im /= np.max(im)
+        im /= (np.max(im)+eps)
     fims = np.rot90(np.rollaxis(nib.load(fatpath.format(subj)).get_data(),2,0),-1,axes=(1,2))
     for im in fims:
         im[im<0] = 0
-        im /= np.max(im)
+        im /= (np.max(im)+eps)
     inputs = np.stack((frame1,wims,fims),axis=3)
     return inputs
 

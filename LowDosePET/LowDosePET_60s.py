@@ -17,17 +17,16 @@ import numpy as np
 import h5py
 import time
 from CustomMetrics import weighted_mae
-os.environ["CUDA_VISIBLE_DEVICES"]="1" # Pick GPU
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
-numEp = 40  # Set maximum number of Epochs
-b_s = 4 # Set batch size
-
+numEp = 40
+b_s = 4
+dual_output = True
 #%%
-# Model Save Path/name- where it is stored during training
-model_filepath = 'LowDosePETModel_v1.hdf5'
-# Data path/name- which data to use
-datapath = 'lowdosePETdata_v2.hdf5'
-
+# Model Save Path/name
+model_filepath = 'LowDosePETModel_60s.hdf5'
+# Data path/name
+datapath = 'lowdosePETdata_60s.hdf5'
 print('Loading data...')
 with h5py.File(datapath,'r') as f:
     x_train = np.array(f.get('train_inputs'))
@@ -37,7 +36,7 @@ with h5py.File(datapath,'r') as f:
     x_test = np.array(f.get('test_inputs'))
     y_test = np.array(f.get('test_targets')) 
     
-#%% Model definition
+#%% Model
 from keras.layers import Input, Cropping2D, Conv2D, concatenate
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D
@@ -168,9 +167,15 @@ test_output = RegModel.predict(x_test,batch_size=pr_bs)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/x_test.shape[0],' ms per slice')
 
+
 from skimage.measure import compare_ssim as ssim
 SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_test[...,0],test_output[...,0])]
 
+# Plot histogram of SSIMs
+#num_bins = 10
+#fig3 = plt.figure()
+#n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
+#plt.show()
 print('Mean SSIM of', np.mean(SSIMs))
 print('Median SSIM of', np.median(SSIMs))
 print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3))
@@ -179,5 +184,7 @@ print('Standard Deviation of',np.std(SSIMs))
 print('If run with Spyder, sample outputs will plot now')
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
+
+# Save to nii file
 
 
