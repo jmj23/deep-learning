@@ -37,7 +37,7 @@ with h5py.File(datapath,'r') as f:
     y_test = np.array(f.get('test_targets')) 
     
 #%% Model
-from keras.layers import Input, Cropping2D, Conv2D, concatenate
+from keras.layers import Input, Cropping2D, Conv2D, concatenate, add
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D
 from keras.layers.advanced_activations import ELU
@@ -182,20 +182,19 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
 print("Generating models...")
 
 GenModel = GeneratorModel(x_train)
-adopt = optimizers.adam()
-GenModel.compile(optimizer=adopt,  metrics= [mean_absolute_error])
+DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:])
+
+GMmodel = Model(inputs=GenModel.input, outputs=DisModel([GenModel.input,GenModel.output]))
+
+adopt = optimizers.adam(lr=1e-5)
+GMmodel.compile(optimizer=adopt, loss='binary_crossentropy')
+DisModel.compile(optimizer=adopt,loss='binary_cross_entropy')
 
 #%% training
 print('Starting training...')
 
-history = RegModel.fit(x_train,y_train,
-                       batch_size=b_s, epochs=numEp,
-                       validation_data=(x_val,y_val),
-                       verbose=1,
-                       callbacks=CBs)
-
 print('Training complete')
-
+#%%
 print('Loading best model...')
 RegModel = load_model(model_filepath,custom_objects={'weighted_mae':weighted_mae})
 
