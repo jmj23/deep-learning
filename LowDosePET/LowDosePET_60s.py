@@ -17,7 +17,7 @@ import numpy as np
 import h5py
 import time
 from CustomMetrics import weighted_mae
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 numEp = 40
 b_s = 4
@@ -166,7 +166,7 @@ time1 = time.time()
 test_output = RegModel.predict(x_test,batch_size=pr_bs)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/x_test.shape[0],' ms per slice')
-
+test_output[test_output<0] = 0
 
 from skimage.measure import compare_ssim as ssim
 SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_test[...,0],test_output[...,0])]
@@ -181,7 +181,6 @@ print('Median SSIM of', np.median(SSIMs))
 print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3))
 print('Standard Deviation of',np.std(SSIMs))
 
-print('If run with Spyder, sample outputs will plot now')
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
 

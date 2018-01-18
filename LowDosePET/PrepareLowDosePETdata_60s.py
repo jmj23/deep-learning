@@ -102,8 +102,8 @@ fl_targets = np.flip(targets,2)
 gammas = .5 + np.random.rand(inputs.shape[0])
 gm_inputs = np.copy(inputs)
 for ii in range(gm_inputs.shape[0]):
-    gm_inputs[ii,...,0] = skexp.adjust_gamma(gm_inputs[ii,...,0],gamma=gammas[ii])
     gm_inputs[ii,...,1] = skexp.adjust_gamma(gm_inputs[ii,...,1],gamma=gammas[ii])
+    gm_inputs[ii,...,2] = skexp.adjust_gamma(gm_inputs[ii,...,2],gamma=gammas[ii])
     
 gm_targets = np.copy(targets)
 
