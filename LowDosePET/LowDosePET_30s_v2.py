@@ -11,7 +11,6 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 from keras.models import load_model
 from keras.metrics import mean_absolute_error 
-from matplotlib import pyplot as plt
 from my_callbacks import Histories
 import numpy as np
 import h5py
@@ -19,14 +18,14 @@ import time
 from CustomMetrics import weighted_mae
 os.environ["CUDA_VISIBLE_DEVICES"]="1" # Pick GPU
 
-numEp = 40  # Set maximum number of Epochs
+numEp = 20  # Set maximum number of Epochs
 b_s = 4 # Set batch size
 
 #%%
 # Model Save Path/name- where it is stored during training
-model_filepath = 'LowDosePETModel_v1.hdf5'
+model_filepath = 'LowDosePETModel_30s_v3.hdf5'
 # Data path/name- which data to use
-datapath = 'lowdosePETdata_v2.hdf5'
+datapath = 'lowdosePETdata_v3.hdf5'
 
 print('Loading data...')
 with h5py.File(datapath,'r') as f:
@@ -43,8 +42,10 @@ from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D
 from keras.layers.advanced_activations import ELU
 from keras.models import Model
-def BlockModel_reg(samp_input):
-    lay_input = Input(shape=(samp_input.shape[1:]),name='input_layer')
+from keras.layers import add, Lambda, Reshape
+
+def ResidualBlockModel(input_shape):
+    lay_input = Input(shape=(input_shape),name='input_layer')
     
     padamt = 1
     crop = Cropping2D(cropping=((0, padamt), (0, padamt)), data_format=None)(lay_input)
@@ -120,7 +121,11 @@ def BlockModel_reg(samp_input):
         
     # regressor
     lay_reg = Conv2D(1,(1,1), activation='linear',name='reg_output')(lay_pad)
-    return Model(lay_input,lay_reg)
+    in0 = Lambda(lambda x : x[...,0],name='channel_split')(lay_input)
+    in0 = Reshape([256,256,1])(in0)
+    lay_res = add([in0,lay_reg],name='residual')
+    
+    return Model(lay_input,lay_res)
     
 #%% callbacks
 print('Setting callbacks...')
@@ -137,7 +142,7 @@ CBs = [checkpoint,earlyStopping,hist]
 #%% prepare model for training
 print("Generating model...")
 
-RegModel = BlockModel_reg(x_train)
+RegModel = ResidualBlockModel(x_train.shape[1:])
 adopt = optimizers.adam()
 RegModel.compile(optimizer=adopt,loss= weighted_mae, metrics= [mean_absolute_error])
 
@@ -176,12 +181,12 @@ print('Median SSIM of', np.median(SSIMs))
 print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3))
 print('Standard Deviation of',np.std(SSIMs))
 
-print('If run with Spyder, sample outputs will plot now')
+
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
 
 #Export to NIFTI
-import nibabel as nib
-testsubj1 = np.rollaxis(np.rollaxis(test_output[:89,...,0],2,0),2,0)
-output_img = nib.Nifti1Image(testsubj1, np.eye(4))
-output_img.to_filename('subj014_simFullDosePET_30s.nii')
+#import nibabel as nib
+#testsubj1 = np.rollaxis(np.rollaxis(test_output[:89,...,0],2,0),2,0)
+#output_img = nib.Nifti1Image(testsubj1, np.eye(4))
+#output_img.to_filename('subj014_simFullDosePET_30s.nii')
