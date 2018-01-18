@@ -7,36 +7,39 @@ Created on Wed May 31 14:06:34 2017
 import sys
 import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 from keras.models import load_model
-from keras.metrics import mean_absolute_error 
+import keras.backend as K
 from matplotlib import pyplot as plt
-from my_callbacks import Histories
 import numpy as np
 import h5py
 import time
-from CustomMetrics import weighted_mae
+from tqdm import trange
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
-
+np.random.seed(seed=1)
 #%%
 # Model Save Path/name
 model_filepath = 'LowDosePET_GAN_v1.hdf5'
 # Data path/name
 datapath = 'lowdosePETdata_v2.hdf5'
-print('Loading data...')
-with h5py.File(datapath,'r') as f:
-    x_train = np.array(f.get('train_inputs'))
-    y_train = np.array(f.get('train_targets'))
-    x_val = np.array(f.get('val_inputs'))
-    y_val = np.array(f.get('val_targets'))
-    x_test = np.array(f.get('test_inputs'))
-    y_test = np.array(f.get('test_targets')) 
-    
+if not 'x_train' in locals():
+    print('Loading data...')
+    with h5py.File(datapath,'r') as f:
+        x_train = np.array(f.get('train_inputs'))
+        y_train = np.array(f.get('train_targets'))
+        x_val = np.array(f.get('val_inputs'))
+        y_val = np.array(f.get('val_targets'))
+        x_test = np.array(f.get('test_inputs'))
+        y_test = np.array(f.get('test_targets')) 
+#%% Custom Loss
+def modified_binary_crossentropy(target, output):
+    #output = K.clip(output, _EPSILON, 1.0 - _EPSILON)
+    #return -(target * output + (1.0 - target) * (1.0 - output))
+    return K.mean(target*output)
 #%% Model
-from keras.layers import Input, Cropping2D, Conv2D, concatenate, add
+from keras.layers import Input, Cropping2D, Conv2D, concatenate, add, Lambda
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
-from keras.layers import UpSampling2D
+from keras.layers import UpSampling2D, Reshape
 from keras.layers.advanced_activations import ELU
 from keras.models import Model
 def GeneratorModel(samp_input):
@@ -60,7 +63,7 @@ def GeneratorModel(samp_input):
     act_list = [lay_act]
     
     # contracting blocks 2-3
-    for rr in range(2,4):
+    for rr in range(2,3):
         lay_conv1 = Conv2D(16*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_act)
         lay_conv3 = Conv2D(16*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(lay_act)
         lay_conv51 = Conv2D(16*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(lay_act)
@@ -74,7 +77,7 @@ def GeneratorModel(samp_input):
         act_list.append(lay_act)
     
     # expanding block 3
-    dd=3
+    dd=2
     lay_deconv1 = Conv2D(16*dd,(1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_act)
     lay_deconv3 = Conv2D(16*dd,(3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_act)
     lay_deconv51 = Conv2D(16*dd, (3,3),padding='same',name='DeConv51_{}'.format(dd))(lay_act)
@@ -93,7 +96,7 @@ def GeneratorModel(samp_input):
     lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
     
     # expanding blocks 2-1
-    expnums = list(range(1,3))
+    expnums = list(range(1,2))
     expnums.reverse()
     for dd in expnums:
         lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
@@ -111,12 +114,15 @@ def GeneratorModel(samp_input):
         lay_cleanup = Conv2D(16*dd, (3,3), padding='same',name='cleanup{}_2'.format(dd))(lay_act)
         bn = BatchNormalization()(lay_cleanup)
         lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
-        
+    
+    # regressor    
     lay_pad = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(lay_act)
-        
-    # regressor
-    lay_reg = Conv2D(1,(1,1), activation='linear',name='reg_output')(lay_pad)
-    return Model(lay_input,lay_reg)
+    lay_reg = Conv2D(1,(1,1), activation='linear',name='regression')(lay_pad)
+    in0 = Lambda(lambda x : x[...,0],name='channel_split')(lay_input)
+    in0 = Reshape([256,256,1])(in0)
+    lay_res = add([in0,lay_reg],name='residual')
+    
+    return Model(lay_input,lay_res)
 #%% Discriminator model
 from keras.layers import Flatten, Dense, Activation #,Dropout
 
@@ -124,7 +130,7 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     # Conditional Inputs
     lay_input = Input(shape=input_shape,name='conditional_input')
     
-    lay_step = Conv2D(filtnum,(3,3),padding='valid',strides=(2,2),name='StepdownLayer')(lay_input)
+    lay_step = Conv2D(filtnum,(4,4),padding='valid',strides=(2,2),name='StepdownLayer')(lay_input)
     # contracting block 1
     rr = 1
     lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_step)
@@ -140,7 +146,7 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     
     # Testing Input block
     lay_test = Input(shape=test_shape,name='test_input')
-    lay_step2 = Conv2D(filtnum,(3,3),padding='valid',strides=(2,2),name='StepdownLayer2')(lay_test)
+    lay_step2 = Conv2D(filtnum,(4,4),padding='valid',strides=(2,2),name='StepdownLayer2')(lay_test)
     # contracting block 1
     rr = 1
     lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',name='Conv1_{}t'.format(rr))(lay_step2)
@@ -178,80 +184,131 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
 #%% prepare model for training
 print("Generating models...")
 
+adopt1 = optimizers.adam(lr=1e-5)
+adopt2 = optimizers.adam(lr=1e-5)
+
+DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],20)
+DisModel.compile(optimizer=adopt1,loss=modified_binary_crossentropy)
+
 GenModel = GeneratorModel(x_train)
-DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:])
+
+DisModel.trainable = False
+for l in DisModel.layers:
+    l.trainable = False
 
 GMmodel = Model(inputs=GenModel.input, outputs=DisModel([GenModel.input,GenModel.output]))
 
-adopt = optimizers.adam(lr=1e-5)
-GMmodel.compile(optimizer=adopt, loss='binary_crossentropy')
-DisModel.compile(optimizer=adopt,loss='binary_cross_entropy')
-
+GMmodel.compile(optimizer=adopt2, loss=modified_binary_crossentropy)
+#%%
+# Example Display function
+def display_example(ex_ind,x_train,y_train,GenModel):
+    plt.figure(1,figsize=(9,3.3),frameon=False)
+    plt.ion()
+    cond_samp = x_train[ex_ind,...][np.newaxis,...]
+    truth_samp = y_train[ex_ind]
+    output_samp = GenModel.predict(cond_samp)
+    samp_im = np.c_[cond_samp[0,...,0],output_samp[0,...,0],truth_samp[...,0]]
+    plt.pause(0.0001)
+    plt.imshow(samp_im,cmap='gray')
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
 #%% training
 print('Starting training...')
+ex_ind = 50
+numIter = 10000
+numPreIter = 101
 b_s = 8
-batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
-cond_batch = x_train[batch_inds,...]
-real_batch = y_train[batch_inds,...]
-fake_batch = GenModel.predict(cond_batch,batch_size=b_s)
-y_batch = np.ones([2*b_s, 1])
-y_batch[b_s:, :] = 0
-x_batch = np.concatenate((real_batch,fake_batch))
-cond_batch2 = np.concatenate((cond_batch,cond_batch))
-DisModel.train_on_batch()
+disMult = 2
+softMax = .9
+dis_loss = np.zeros((numIter,1))
+gen_loss = np.zeros((numIter,1))
+
+# pre train the discriminator
+print('Pre-training the discriminator...')
+#sys.stdout.flush
+
+t = trange(numPreIter,file=sys.stdout)
+for pp in t:
+    # grab random training samples
+        batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+        cond_batch = x_train[batch_inds,...]
+        real_batch = y_train[batch_inds,...]
+        # generate current output of generator model
+        fake_batch = GenModel.predict(cond_batch,batch_size=b_s)
+        # create targets for discriminator model
+        y_batchR = softMax*np.ones([b_s, 1])
+        y_batchF = np.zeros([b_s, 1])
+        # train discrimator model on real batch
+        rloss=DisModel.train_on_batch(x={'conditional_input':cond_batch,
+                                   'test_input':real_batch},y=y_batchR)
+        # train discrimator model on fake batch
+        floss = DisModel.train_on_batch(x={'conditional_input':cond_batch,
+                                    'test_input':fake_batch},y=y_batchF)
+        disloss = (rloss+floss)/2
+        t.set_postfix(Dloss=disloss)
+        
+t.close()
 
 
+print('Training adversarial model')
+
+t = trange(numIter,file=sys.stdout)
+for ii in t:
+    # Train Discriminator
+    for _ in range(disMult):
+        # grab random training samples
+        batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+        cond_batch = x_train[batch_inds,...]
+        real_batch = y_train[batch_inds,...]
+        # generate current output of generator model
+        fake_batch = GenModel.predict(cond_batch,batch_size=b_s)
+        # display example image
+    #    display_example(ex_ind)
+        # create targets for discriminator model
+        y_batchR = softMax*np.ones([b_s, 1])
+        y_batchF = np.zeros([b_s, 1])
+        # train discrimator model on real batch
+        rloss = dis_loss[ii]=DisModel.train_on_batch(x={'conditional_input':cond_batch,
+                                               'test_input':real_batch},y=y_batchR)
+        # train discrimator model on fake batch
+        floss = DisModel.train_on_batch(x={'conditional_input':cond_batch,
+                                               'test_input':fake_batch},y=y_batchF)
+        meanloss = (rloss+floss)/2
+        dis_loss[ii] = meanloss
+    # Train Combined Model
+    batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+    cond_batch = x_train[batch_inds,...]
+    y_batch = .9*np.ones([b_s, 1])
+    gen_loss[ii] = GMmodel.train_on_batch(x=cond_batch,y=y_batch)
+    t.set_postfix(Dloss=dis_loss[ii], Gloss=gen_loss[ii])
+    
+t.close()
 print('Training complete')
-#%%
-print('Loading best model...')
-RegModel = load_model(model_filepath,custom_objects={'weighted_mae':weighted_mae})
 
-score = RegModel.evaluate(x_test,y_test)
-print("")
-print("Metrics on test data: {}".format(score))
+# display example image
+display_example(ex_ind,x_train,y_train,GenModel)
+# display loss
+fig2 = plt.figure(2)
+plt.plot(np.arange(numIter),dis_loss,np.arange(numIter),gen_loss)
+plt.legend(['Discriminator Loss','Generator Loss'])
+plt.show()
 
-#%% plotting
-#print('Plotting metrics')
-#step = np.minimum(b_s/x_train.shape[0],1)
-#actEpochs = len(history.history['loss'])
-#epochs = np.arange(1,actEpochs+1)
-#actBatches = len(hist.loss)
-#batches = np.arange(1,actBatches+1)* actEpochs/(actBatches+1)
-#
-#fig2 = plt.figure(1,figsize=(12.0, 6.0));
-#plt.plot(epochs,history.history['loss'],'r-s')
-#plt.plot(batches,hist.loss,'r-')
-#plt.plot(epochs,history.history['val_loss'],'m-s')
-#plt.plot(batches,hist.val_loss,'m-')
-#
-#plt.show()
 #%%
 print('Generating samples')
 # regression result
 pr_bs = np.minimum(16,x_test.shape[0])
 time1 = time.time()
-test_output = RegModel.predict(x_test,batch_size=pr_bs)
+test_output = GenModel.predict(x_test,batch_size=pr_bs)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/x_test.shape[0],' ms per slice')
 
-
-val_output = RegModel.predict(x_val,batch_size=pr_bs)
-
 from skimage.measure import compare_ssim as ssim
 SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_test[...,0],test_output[...,0])]
-val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_val[...,0],val_output[...,0])]
 
-# Plot histogram of SSIMs
-#num_bins = 10
-#fig3 = plt.figure()
-#n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
-#plt.show()
 print('Mean SSIM of', np.mean(SSIMs))
 print('Median SSIM of', np.median(SSIMs))
 print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3))
 
 from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
-multi_slice_viewer0(np.c_[x_val[...,0],val_output[...,0],y_val[...,0]],val_SSIMs)
-
-
