@@ -180,8 +180,8 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
 #%% prepare model for training
 print("Generating models...")
 
-adopt1 = optimizers.adam(lr=1e-5)
-adopt2 = optimizers.adam(lr=1e-5)
+adopt1 = optimizers.adam(lr=2e-5)
+adopt2 = optimizers.adam(lr=2e-5)
 
 DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],20)
 DisModel.compile(optimizer=adopt1,loss='binary_crossentropy')
@@ -212,11 +212,11 @@ def display_example(ex_ind,indata,fulldose_im,GenModel):
 print('Starting training...')
 ex_ind = 133
 numIter = 10000
-numPreIter = 101
+numPreIter = 201
 progstep = 50
 b_s = 8
-disMult = 3
-softMax = .9
+disMult = 5
+softMax = .95
 dis_loss = np.zeros((numIter,1))
 gen_loss = np.zeros((numIter,3))
 
