@@ -11,13 +11,14 @@ import nibabel as nib
 import os
 import sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-savepath = 'lowdosePETdata_v2.hdf5'
+savepath = 'lowdosePETdata_v3.hdf5'
 
 train_subj_vec = [3,5,7,8,9,10,11,12,13,15,17]
 val_subj_vec = [2, 16]
 test_subj_vec = [14, 4, 6]
 np.random.seed(seed=2)
 eps = 1e-8
+numFrames = 3
 
 normfac = 20000 # what the images are normalized to. Keep this is mind when
                 # looking at images afterwards
@@ -27,7 +28,7 @@ normfac = 20000 # what the images are normalized to. Keep this is mind when
 def load_training_input(subj):
     waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
     fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
-    LDpath = 'lowdose/volunteer{:03d}_lowdose.nii.gz'.format(subj)
+    LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
     LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
     frame1 = LDims[0]
@@ -44,7 +45,7 @@ def load_training_input(subj):
         im /= (np.max(im)+eps)
     inputs = np.stack((frame1,wims,fims),axis=3)
     
-    for fnum in range(1,5):
+    for fnum in range(1,numFrames):
         frame = LDims[fnum]
         for im in frame:
             im[im<0]=0
@@ -69,7 +70,7 @@ def load_training_target(subj):
     for im in FDims:
         im[im<0]=0
         im /= normfac
-    targets = np.tile(FDims[...,np.newaxis],(5,1,1,1))
+    targets = np.tile(FDims[...,np.newaxis],(numFrames,1,1,1))
     return targets
 
 #%% Loading training inputs
@@ -147,7 +148,7 @@ def load_eval_input(subj,frame=1):
     print('Loading evaluation subject',subj,'...')
     waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
     fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
-    LDpath = 'lowdose/volunteer{:03d}_lowdose.nii.gz'.format(subj)
+    LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
     LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
     frame1 = LDims[0]
