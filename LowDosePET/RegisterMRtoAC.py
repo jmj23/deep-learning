@@ -11,9 +11,9 @@ import ants
 import numpy as np
 from VisTools import multi_slice_viewer0, registration_viewer
 
-MRpath = 'NIFTIs/subj{:03d}_{}.nii'
-ACpath = 'BREAST_RECON/fulldose/volunteer{:03d}_fulldose.nii.gz'
-savepath = 'RegNIFTIs/subj{:03d}_{}.nii'
+MRpath = 'MRniftis/subj{:03d}_{}.nii'
+ACpath = 'fulldose/volunteer{:03d}_fulldose.nii.gz'
+savepath = 'RegNIFTIs2/subj{:03d}_{}.nii'
 
 #%% Display methods
 def display_ants(imglist):
@@ -71,7 +71,7 @@ def SaveData(savepath,subj,reg_water,reg_fat):
 #%% Main Script
 
 subjectlist = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-#subjectlist = [5]
+#subjectlist = [13]
 
 for subj in subjectlist:
     print('Loading data...')
