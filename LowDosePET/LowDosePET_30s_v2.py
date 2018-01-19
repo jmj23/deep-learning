@@ -18,7 +18,7 @@ import time
 from CustomMetrics import weighted_mae
 os.environ["CUDA_VISIBLE_DEVICES"]="1" # Pick GPU
 
-numEp = 20  # Set maximum number of Epochs
+numEp = 40  # Set maximum number of Epochs
 b_s = 4 # Set batch size
 
 #%%
@@ -29,12 +29,12 @@ datapath = 'lowdosePETdata_v3.hdf5'
 
 print('Loading data...')
 with h5py.File(datapath,'r') as f:
-    x_train = np.array(f.get('train_inputs'))
-    y_train = np.array(f.get('train_targets'))
+    x_test = np.array(f.get('test_inputs'))
+    y_test = np.array(f.get('test_targets'))
     x_val = np.array(f.get('val_inputs'))
     y_val = np.array(f.get('val_targets'))
-    x_test = np.array(f.get('test_inputs'))
-    y_test = np.array(f.get('test_targets')) 
+    x_train = np.array(f.get('train_inputs'))
+    y_train = np.array(f.get('train_targets'))
     
 #%% Model definition
 from keras.layers import Input, Cropping2D, Conv2D, concatenate
@@ -166,6 +166,7 @@ print("Metrics on test data: {}".format(score))
 
 #%%
 print('Generating samples')
+
 # regression result
 pr_bs = np.minimum(16,x_test.shape[0])
 time1 = time.time()
@@ -183,10 +184,10 @@ print('Standard Deviation of',np.std(SSIMs))
 
 
 from VisTools import multi_slice_viewer0
-multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],SSIMs)
+multi_slice_viewer0(np.c_[x_test[...,0],x_test[...,1],test_output[...,0],y_test[...,0]],SSIMs)
 
 #Export to NIFTI
-#import nibabel as nib
-#testsubj1 = np.rollaxis(np.rollaxis(test_output[:89,...,0],2,0),2,0)
-#output_img = nib.Nifti1Image(testsubj1, np.eye(4))
-#output_img.to_filename('subj014_simFullDosePET_30s.nii')
+import nibabel as nib
+testsubj1 = np.rollaxis(np.rollaxis(test_output[:89,...,0],2,0),2,0)
+output_img = nib.Nifti1Image(testsubj1, np.eye(4))
+output_img.to_filename('subj014_simFullDosePET_30s.nii')
