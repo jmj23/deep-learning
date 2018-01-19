@@ -26,11 +26,11 @@ normfac = 20000 # what the images are normalized to. Keep this is mind when
 #%% Training data loading functions
 # Inputs
 def load_training_input(subj):
-    waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
-    fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
+    waterpath = 'RegNIFTIs2/subj{:03d}_WATER.nii'.format(subj)
+    fatpath = 'RegNIFTIs2/subj{:03d}_FAT.nii'.format(subj)
     LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
-    LDims = np.flip(np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0),1)
+    LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
     frame1 = LDims[0]
     for im in frame1:
         im[im<0] = 0
@@ -62,7 +62,7 @@ def load_training_input(subj):
 def load_training_target(subj):
     FDpath = 'fulldose/volunteer{:03d}_fulldose.nii.gz'.format(subj)
     FDims = nib.load(FDpath).get_data()
-    FDims = np.flip(np.rot90(np.rollaxis(FDims,2,0),1,axes=(1,2)),0)
+    FDims = np.rot90(np.rollaxis(FDims,2,0),1,axes=(1,2))
     for im in FDims:
         im[im<0]=0
         im /= normfac
@@ -130,10 +130,10 @@ with h5py.File(savepath, 'a') as hf:
 #%%
 del aug_inputs
 del aug_targets
-del inputs
+#del inputs
 del fl_inputs
 del gm_inputs
-del targets
+#del targets
 del fl_targets
 del gm_targets
 del newinputs
@@ -142,23 +142,28 @@ del newtargets
 #%% Validation data
 def load_eval_input(subj,frame=1):
     print('Loading evaluation subject',subj,'...')
-    waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
-    fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
+    waterpath = 'RegNIFTIs2/subj{:03d}_WATER.nii'.format(subj)
+    fatpath = 'RegNIFTIs2/subj{:03d}_FAT.nii'.format(subj)
     LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
-    LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
+    LDims = np.flip(np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0),1)
     frame1 = LDims[0]
     for im in frame1:
         im[im<0] = 0
         im /= normfac
-    wims = np.rot90(np.rollaxis(nib.load(waterpath.format(subj)).get_data(),2,0),-1,axes=(1,2))
+        
+    wnft = nib.as_closest_canonical(nib.load(waterpath.format(subj)))
+    wims = np.flip(np.rot90(np.rollaxis(wnft.get_data(),2,0),k=-1,axes=(1,2)),2)
     for im in wims:
         im[im<0] = 0
         im /= (np.max(im)+eps)
-    fims = np.rot90(np.rollaxis(nib.load(fatpath.format(subj)).get_data(),2,0),-1,axes=(1,2))
+
+    fnft = nib.as_closest_canonical(nib.load(fatpath.format(subj)))
+    fims= np.flip(np.rot90(np.rollaxis(fnft.get_data(),2,0),k=-1,axes=(1,2)),2)
     for im in fims:
         im[im<0] = 0
         im /= (np.max(im)+eps)
+        
     inputs = np.stack((frame1,wims,fims),axis=3)
     return inputs
 
@@ -201,9 +206,9 @@ with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("val_targets",  data=val_targets,dtype='f')
     hf.create_dataset("test_targets",  data=test_targets,dtype='f')
 #%%
-del val_inputs
-del val_targets
-del test_inputs
-del test_targets
+#del val_inputs
+#del val_targets
+#del test_inputs
+#del test_targets
 
 print('done')
