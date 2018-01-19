@@ -27,7 +27,7 @@ def display_ants(imglist):
         nparray = imglist[ii].numpy()
         nparray -= np.min(nparray)
         nparray /= np.max(nparray)
-        nparray = np.rollaxis(np.rollaxis(nparray,2,0),2,1)
+        nparray = np.flip(np.rollaxis(np.rollaxis(nparray,2,0),2,1),1)
         arraylist.append(nparray)
     stacked_array = np.dstack(arraylist)
     multi_slice_viewer0(stacked_array,[])
@@ -70,8 +70,8 @@ def SaveData(savepath,subj,reg_water,reg_fat):
     
 #%% Main Script
 
-subjectlist = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-#subjectlist = [13]
+#subjectlist = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+subjectlist = [11]
 
 for subj in subjectlist:
     print('Loading data...')
@@ -81,8 +81,8 @@ for subj in subjectlist:
     reg_water,reg_fat = RegMRNAC(AC_img,water_img,fat_img)
     
 #    print('Displaying results...')
-#    display_ants([reg_water,AC_img,reg_fat])
-#    display_ants_reg(AC_img,reg_water)
+    display_ants([reg_water,AC_img,reg_fat])
+    display_ants_reg(AC_img,reg_water)
     print('Saving data for subject',subj,'...')
-    SaveData(savepath,subj,reg_water,reg_fat)
+#    SaveData(savepath,subj,reg_water,reg_fat)
     
