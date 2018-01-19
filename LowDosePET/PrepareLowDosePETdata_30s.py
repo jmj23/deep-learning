@@ -141,12 +141,12 @@ del newtargets
 
 #%% Validation data
 def load_eval_input(subj,frame=1):
-    print('Loading evaluation subject',subj,'...')
+    print('Loading evaluation input for subject',subj,'...')
     waterpath = 'RegNIFTIs2/subj{:03d}_WATER.nii'.format(subj)
     fatpath = 'RegNIFTIs2/subj{:03d}_FAT.nii'.format(subj)
     LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
-    LDims = np.flip(np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0),1)
+    LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
     frame1 = LDims[0]
     for im in frame1:
         im[im<0] = 0
@@ -168,6 +168,7 @@ def load_eval_input(subj,frame=1):
     return inputs
 
 def load_eval_target(subj):
+    print('Loading evaluation target for subject',subj,'...')
     FDpath = 'fulldose/volunteer{:03d}_fulldose.nii.gz'.format(subj)
     FDims = nib.load(FDpath).get_data()
     FDims = np.rot90(np.rollaxis(FDims,2,0),1,axes=(1,2))
