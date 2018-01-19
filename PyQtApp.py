@@ -2353,7 +2353,7 @@ class NiftiImportThread(QThread):
                 self.infosig.emit(info)
                 
                 # adjust orientation
-                canon_nft = nib.as_closest_canonical(nft)                
+                canon_nft = nib.as_closest_canonical(nft)         
                 wims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
                 wims_send = self.noise_elim(wims)
                 self.imagesWsig.emit(wims_send)
