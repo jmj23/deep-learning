@@ -103,9 +103,9 @@ def weighted_mae(y_true, y_pred):
     y_pred = K.flatten( y_pred )
 
     tis_mask1 = K.cast( K.greater( y_true, 0.01 ), 'float32' )
-    tis_mask2 = K.cast( K.less( y_true, 2. ), 'float32' )
+    tis_mask2 = K.cast( K.less( y_true, 0.7 ), 'float32' )
     tis_mask = tis_mask1 * tis_mask2
-    les_mask =  K.cast( K.greater(y_true,2.), 'float32' )
+    les_mask =  K.cast( K.greater(y_true,0.7), 'float32' )
     air_mask =  K.cast( K.less( y_true, 0.01 ), 'float32' )
     
     tis_true = tis_mask * y_true
