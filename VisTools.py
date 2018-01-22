@@ -76,7 +76,7 @@ def next_slice_m(fig):
     fig.canvas.draw()
 
 #%%
-def multi_slice_viewer0(volume,labels=[]):
+def multi_slice_viewer0(volume,title='',labels=[]):
     fig, ax = plt.subplots()
     if len(volume.shape) != 3:
         print('Volume must be 3D array')
@@ -84,6 +84,7 @@ def multi_slice_viewer0(volume,labels=[]):
     ax.volume = volume
     ax.index = volume.shape[0] // 2
     ax.imshow(volume[ax.index,...],cmap='gray',vmin=0, vmax=1)
+    ax.set_title(title)
     ax.set_axis_off()
     txtobj = plt.text(0.05, .95,ax.index+1, ha='left', va='top',color='red',
                       transform=ax.transAxes)
