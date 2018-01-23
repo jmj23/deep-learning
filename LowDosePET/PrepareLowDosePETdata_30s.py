@@ -26,8 +26,8 @@ normfac = 20000 # what the images are normalized to. Keep this is mind when
 #%% Training data loading functions
 # Inputs
 def load_training_input(subj):
-    waterpath = 'RegNIFTIs2/subj{:03d}_WATER.nii'.format(subj)
-    fatpath = 'RegNIFTIs2/subj{:03d}_FAT.nii'.format(subj)
+    waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
+    fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
     LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
     LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
@@ -128,12 +128,12 @@ with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
     
 #%%
-del aug_inputs
-del aug_targets
-#del inputs
+#del aug_inputs
+#del aug_targets
+del inputs
 del fl_inputs
 del gm_inputs
-#del targets
+del targets
 del fl_targets
 del gm_targets
 del newinputs
@@ -142,8 +142,8 @@ del newtargets
 #%% Validation data
 def load_eval_input(subj,frame=1):
     print('Loading evaluation input for subject',subj,'...')
-    waterpath = 'RegNIFTIs2/subj{:03d}_WATER.nii'.format(subj)
-    fatpath = 'RegNIFTIs2/subj{:03d}_FAT.nii'.format(subj)
+    waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
+    fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
     LDpath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'.format(subj)
     LDims = nib.load(LDpath).get_data()
     LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
@@ -164,7 +164,7 @@ def load_eval_input(subj,frame=1):
         im[im<0] = 0
         im /= (np.max(im)+eps)
         
-    inputs = np.stack((frame1,wims,fims),axis=3)
+    inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-(sCO+1),...]
     return inputs
 
 def load_eval_target(subj):
@@ -175,7 +175,7 @@ def load_eval_target(subj):
     for im in FDims:
         im[im<0]=0
         im /= normfac
-    targets = FDims[...,np.newaxis]
+    targets = FDims[sCO:-(sCO+1),...,np.newaxis]
     return targets
 
 val_inputs = load_eval_input(val_subj_vec[0],1)
