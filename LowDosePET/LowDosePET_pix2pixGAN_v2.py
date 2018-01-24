@@ -244,36 +244,64 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
 #%% prepare model for training
 print("Generating models...")
 from keras.optimizers import Adam
+# set learning rates and parameters
 lrD = 2e-4
 lrG = 2e-4
-λ = 10
+λ = 10  # grad penalty weighting
 
+# create models
 DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],16)
 GenModel = GeneratorModel(x_train.shape[1:])
 
+# get tensors of inputs and outputs
 real_A = GenModel.input
 fake_B = GenModel.output
 real_B = DisModel.inputs[1]
 output_D_real = DisModel([real_A, real_B])
 output_D_fake = DisModel([real_A, fake_B])
-
+# create mixed output for gradient penalty
 ep_input = K.placeholder(shape=(None,1,1,1))
 mixed_B = Input(shape=x_train.shape[1:],
                     tensor=ep_input * real_B + (1-ep_input) * fake_B)
 output_D_mixed = DisModel([real_A,mixed_B])
-
+# discriminator losses
 loss_D_real = K.mean(output_D_real)
 loss_D_fake = K.mean(output_D_fake)
-
+# gradient penalty loss
 grad_mixed = K.gradients([output_D_mixed],[mixed_B])[0]
 norm_grad_mixed = K.sqrt(K.sum(K.square(grad_mixed), axis=[1,2,3]))
 grad_penalty = K.mean(K.square(norm_grad_mixed-1))
-
+# composite Discriminator loss, training updates, and training function
 loss_D = loss_D_fake - loss_D_real + λ * grad_penalty
 training_updates = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel.trainable_weights,[],loss_D)
 netD_train = K.function([real_A, real_B, ep_input],[loss_D_real,loss_D_fake], training_updates)
 
-loss_L1 = K.mean(K.abs(fake_B-real_B))
+# weighted L1 loss tensors and masks
+y_true = K.flatten(real_B)
+y_pred = K.flatten(fake_B)
+
+tis_mask1 = K.cast( K.greater( y_true, 0.01 ), 'float32' )
+tis_mask2 = K.cast( K.less( y_true, 0.3 ), 'float32' )
+tis_mask = tis_mask1 * tis_mask2
+les_mask =  K.cast( K.greater(y_true,0.3), 'float32' )
+air_mask =  K.cast( K.less( y_true, 0.01 ), 'float32' )
+
+tis_true = tis_mask * y_true
+tis_pred = tis_mask * y_pred
+
+air_true = air_mask * y_true
+air_pred = air_mask * y_pred
+
+les_true = les_mask * y_true
+les_pred = les_mask * y_pred
+
+tis_loss = K.mean(K.abs(tis_true - tis_pred), axis=-1)
+air_loss = K.mean(K.abs(air_true - air_pred), axis=-1)
+les_loss = K.mean(K.abs(les_true - les_pred), axis=-1)
+# weighted L1 loss
+loss_L1 = .1*air_loss + .2*tis_loss + .7 * les_loss
+
+#loss_L1 = K.mean(K.abs(fake_B-real_B))
 
 loss_G = -loss_D_fake + 100 * loss_L1
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
@@ -283,10 +311,10 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 
 #%% training
 print('Starting training...')
-ex_ind = 220
-numIter = 500
+ex_ind = 124
+numIter = 8000
 progstep = 50
-valstep = 250
+valstep = 200
 b_s = 8
 val_b_s = 8
 dis_loss = np.zeros((numIter,2))
@@ -333,8 +361,8 @@ for ii in t:
         cur_val_loss = np.mean(templosses)
         if cur_val_loss < np.min(val_loss):
             tqdm.write('Valdiation loss decreased to {:.02e}'.format(cur_val_loss))
-        tqdm.write("Saving model to file...")
         GenModel.save(model_filepath,True,False)
+        tqdm.write("Saved model to file")
             
         val_loss[vv] = cur_val_loss           
         vv +=1
@@ -361,7 +389,7 @@ plt.show()
 #%%
 print('Generating samples')
 from keras.models import load_model
-K.set_learning_phase(0)
+#K.set_learning_phase(0)
 GenModel = load_model(model_filepath,None,False)
 
 # get generator results
