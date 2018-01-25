@@ -45,7 +45,10 @@ from keras.layers.advanced_activations import LeakyReLU, ELU
 from keras.models import Model
 from keras.initializers import RandomNormal
 
-conv_init = RandomNormal(0, 0.05)
+#conv_initG = RandomNormal(0, 0.05)
+conv_initG = 'glorot_uniform'
+#conv_initD = RandomNormal(0, 0.05)
+conv_initD = 'he_normal'
 gamma_init = RandomNormal(1., 0.05) # for batch normalization
 
 def batchnorm():
@@ -61,66 +64,66 @@ def GeneratorModel(input_shape):
     filtnum = 32
     # contracting block 1
     rr = 1
-    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_init,
+    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
                        name='Conv1_{}'.format(rr))(crop)
-    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv3_{}'.format(rr))(crop)
-    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv51_{}'.format(rr))(crop)
-    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv52_{}'.format(rr))(lay_conv51)
     lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_init,
+    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
     bn = BatchNormalization()(lay_conv_all)
     lay_act = ELU(name='elu{}_1'.format(rr))(bn)
-    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
                        name='ConvStride_{}'.format(rr))(lay_act)
     lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
     act_list = [lay_act]
     
     # contracting blocks 2-3
     for rr in range(2,3):
-        lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_init,
+        lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
                        name='Conv1_{}'.format(rr))(lay_act)
-        lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv3_{}'.format(rr))(lay_act)
-        lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv51_{}'.format(rr))(lay_act)
-        lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv52_{}'.format(rr))(lay_conv51)
         lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-        lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_init,
+        lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
         bn = BatchNormalization()(lay_conv_all)
         lay_act = ELU(name='elu_{}'.format(rr))(bn)
-        lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+        lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
                        name='ConvStride_{}'.format(rr))(lay_act)
         lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
         act_list.append(lay_act)
     
     # expanding block 3
     dd=2
-    lay_deconv1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_init,
+    lay_deconv1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
                        name='DeConv1_{}'.format(dd))(lay_act)
-    lay_deconv3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_init,
+    lay_deconv3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv3_{}'.format(dd))(lay_act)
-    lay_deconv51 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_init,
+    lay_deconv51 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv51_{}'.format(dd))(lay_act)
-    lay_deconv52 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_init,
+    lay_deconv52 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv52_{}'.format(dd))(lay_deconv51)
     lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
-    lay_deconv_all = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_init,
+    lay_deconv_all = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='DeConvAll_{}'.format(dd))(lay_merge)
     bn = BatchNormalization()(lay_deconv_all)
     lay_act = ELU(name='elu_d{}'.format(dd))(bn)
     
     lay_up = UpSampling2D()(lay_act)
     
-    lay_cleanup = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_init,
+    lay_cleanup = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
                        name='cleanup{}_1'.format(dd))(lay_up)
     lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
-    lay_cleanup = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_init,
+    lay_cleanup = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
                        use_bias=False,name='cleanup{}_2'.format(dd))(lay_act)
     bn = BatchNormalization()(lay_cleanup)
     lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
@@ -130,31 +133,31 @@ def GeneratorModel(input_shape):
     expnums.reverse()
     for dd in expnums:
         lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
-        lay_deconv1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_init,
+        lay_deconv1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
                        name='DeConv1_{}'.format(dd))(lay_skip)
-        lay_deconv3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_init,
+        lay_deconv3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv3_{}'.format(dd))(lay_skip)
-        lay_deconv51 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_deconv51 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv51_{}'.format(dd))(lay_skip)
-        lay_deconv52 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_deconv52 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv52_{}'.format(dd))(lay_deconv51)
         lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
-        lay_deconv_all = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_init,
+        lay_deconv_all = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='DeConvAll_{}'.format(dd))(lay_merge)
         bn = BatchNormalization()(lay_deconv_all)
         lay_act = ELU(name='elu_d{}'.format(dd))(bn)
         lay_up = UpSampling2D()(lay_act)        
-        lay_cleanup = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_init,
+        lay_cleanup = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
                        name='cleanup{}_1'.format(dd))(lay_up)
         lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
-        lay_cleanup = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_init,
+        lay_cleanup = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
                        use_bias=False,name='cleanup{}_2'.format(dd))(lay_act)
         bn = BatchNormalization()(lay_cleanup)
         lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
     
     # regressor    
     lay_pad = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(lay_act)
-    lay_reg = Conv2D(1,(1,1), activation='linear',kernel_initializer=conv_init,
+    lay_reg = Conv2D(1,(1,1), activation='linear',kernel_initializer=conv_initG,
                        name='regression')(lay_pad)    
     return Model(lay_input,lay_reg)
 #%% Discriminator model
@@ -164,50 +167,50 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     # Conditional Inputs
     lay_input = Input(shape=input_shape,name='conditional_input')
     
-    lay_step = Conv2D(filtnum,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+    lay_step = Conv2D(filtnum,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
                        name='StepdownLayer')(lay_input)
     
     usebias = False
     
     # contracting block 1
     rr = 1
-    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_init,
+    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv1_{}'.format(rr))(lay_step)
-    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv3_{}'.format(rr))(lay_step)
-    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv51_{}'.format(rr))(lay_step)
-    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
     lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_init,
+    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initD,
                        use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
 #    bn = batchnorm()(lay_conv_all, training=1)
     lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
-    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
                        use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
     lay_act1 = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
     
     # Testing Input block
     lay_test = Input(shape=test_shape,name='test_input')
-    lay_step2 = Conv2D(filtnum,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+    lay_step2 = Conv2D(filtnum,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
                        use_bias=usebias,name='StepdownLayer2')(lay_test)
     # contracting block 1
     rr = 1
-    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_init,
+    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv1_{}t'.format(rr))(lay_step2)
-    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv3_{}t'.format(rr))(lay_step2)
-    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv51_{}t'.format(rr))(lay_step2)
-    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv52_{}t'.format(rr))(lay_conv51)
     lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}t'.format(rr))
-    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_init,
+    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initD,
                        use_bias=usebias,name='ConvAll_{}t'.format(rr))(lay_merge)
 #    bn = batchnorm()(lay_conv_all, training=1)
     lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1t'.format(rr))(lay_conv_all)
-    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
                        use_bias=usebias,name='ConvStride_{}t'.format(rr))(lay_act)
     lay_act2 = LeakyReLU(alpha=0.2,name='leaky{}_2t'.format(rr))(lay_stride)
     
@@ -215,20 +218,20 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     lay_act = concatenate([lay_act1,lay_act2],name='InputMerge')
     # contracting blocks 2-5
     for rr in range(2,6):
-        lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_init,
+        lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
-        lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv3_{}'.format(rr))(lay_act)
-        lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv51_{}'.format(rr))(lay_act)
-        lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_init,
+        lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
         lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-        lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_init,
+        lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initD,
                        use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
 #        bn = batchnorm()(lay_conv_all, training=1)
         lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
-        lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_init,
+        lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
                        use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
         lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
     
@@ -264,6 +267,7 @@ output_D_mixed = DisModel([real_A,mixed_B])
 # discriminator losses
 loss_D_real = K.mean(output_D_real)
 loss_D_fake = K.mean(output_D_fake)
+loss_D_both = (loss_D_real + loss_D_fake)/2
 # gradient penalty loss
 grad_mixed = K.gradients([output_D_mixed],[mixed_B])[0]
 norm_grad_mixed = K.sqrt(K.sum(K.square(grad_mixed), axis=[1,2,3]))
@@ -271,11 +275,11 @@ grad_penalty = K.mean(K.square(norm_grad_mixed-1))
 # composite Discriminator loss, training updates, and training function
 loss_D = loss_D_fake - loss_D_real + λ * grad_penalty
 training_updates = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel.trainable_weights,[],loss_D)
-netD_train = K.function([real_A, real_B, ep_input],[loss_D_real,loss_D_fake], training_updates)
+netD_train = K.function([real_A, real_B, ep_input],[loss_D], training_updates)
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 1 * loss_L1
+loss_G = -loss_D_fake + 5 * loss_L1
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
 netG_train = K.function([real_A, real_B], [loss_G, loss_L1], training_updates)
 
@@ -286,12 +290,13 @@ netD_evalF = K.function([real_A],[output_D_fake])
 #%% training
 print('Starting training...')
 ex_ind = 65
-numIter = 5000
+numIter = 10000
 progstep = 100
-valstep = 200
+valstep = 250
 b_s = 8
 val_b_s = 8
-dis_loss = np.zeros((numIter,2))
+train_rat = 3
+dis_loss = np.zeros((numIter,1))
 gen_loss = np.zeros((numIter,2))
 val_loss = np.ones((np.int(numIter/valstep),1))
 templosses = np.zeros(np.int(x_val.shape[0]/val_b_s))
@@ -305,14 +310,15 @@ vv = 0
 
 t = trange(numIter,file=sys.stdout)
 for ii in t:
-    # Train Discriminator
-    # grab random training samples
-    batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
-    cond_batch = x_train[batch_inds,...]
-    real_batch = y_train[batch_inds,...]
-    # train discrimator
-    ϵ = np.random.uniform(size=(b_s, 1, 1 ,1))
-    errD  = netD_train([cond_batch, real_batch, ϵ])
+    for _ in range(train_rat):
+        # Train Discriminator
+        # grab random training samples
+        batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+        cond_batch = x_train[batch_inds,...]
+        real_batch = y_train[batch_inds,...]
+        # train discrimator
+        ϵ = np.random.uniform(size=(b_s, 1, 1 ,1))
+        errD  = netD_train([cond_batch, real_batch, ϵ])
     dis_loss[ii] = errD
     # Train Generator
     errG = netG_train([cond_batch, real_batch])
@@ -351,12 +357,10 @@ print('Training complete')
 # display loss
 fig2 = plt.figure(2)
 plt.plot(np.arange(numIter),dis_loss[:,0],
-         np.arange(numIter),dis_loss[:,1],
          np.arange(numIter),gen_loss[:,0],
          np.arange(numIter),100*gen_loss[:,1],
          np.arange(0,numIter,valstep),100*val_loss)
-plt.legend(['Discriminator Real Loss',
-            'Discriminator Fake Loss',
+plt.legend(['Discriminator Loss',
             'Generator Loss',
             '100x L1 loss',
             'Validation loss'])
