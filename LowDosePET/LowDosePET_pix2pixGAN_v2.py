@@ -342,7 +342,7 @@ for ii in t:
     for _ in range(train_rat):
         # Train Discriminator
         # grab random training samples
-        batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+        batch_inds = np.random.choice(x_train.shape[0], b_s, replace=False)
         cond_batch = x_train[batch_inds,...]
         real_batch = y_train[batch_inds,...]
         # train discrimator
