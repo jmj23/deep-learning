@@ -187,7 +187,7 @@ from VisTools import multi_slice_viewer0
 multi_slice_viewer0(np.c_[x_test[...,0],x_test[...,1],test_output[...,0],y_test[...,0]],SSIMs)
 
 #Export to NIFTI
-import nibabel as nib
-testsubj1 = np.rollaxis(np.rollaxis(test_output[:89,...,0],2,0),2,0)
-output_img = nib.Nifti1Image(testsubj1, np.eye(4))
-output_img.to_filename('subj014_simFullDosePET_30s.nii')
+#import nibabel as nib
+#testsubj1 = np.rollaxis(np.rollaxis(test_output[:85,...,0],2,0),2,0)
+#output_img = nib.Nifti1Image(testsubj1, np.eye(4))
+#output_img.to_filename('subj014_simFullDosePET_30s.nii')
