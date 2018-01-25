@@ -267,7 +267,7 @@ output_D_mixed = DisModel([real_A,mixed_B])
 # discriminator losses
 loss_D_real = K.mean(output_D_real)
 loss_D_fake = K.mean(output_D_fake)
-loss_D_both = (loss_D_real + loss_D_fake)/2
+
 # gradient penalty loss
 grad_mixed = K.gradients([output_D_mixed],[mixed_B])[0]
 norm_grad_mixed = K.sqrt(K.sum(K.square(grad_mixed), axis=[1,2,3]))
@@ -355,15 +355,17 @@ del t
 print('Training complete')
 
 # display loss
+from scipy.signal import medfilt
 fig2 = plt.figure(2)
-plt.plot(np.arange(numIter),dis_loss[:,0],
-         np.arange(numIter),gen_loss[:,0],
-         np.arange(numIter),100*gen_loss[:,1],
+plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],51),
+         np.arange(numIter),medfilt(gen_loss[:,0],51),
+         np.arange(numIter),medfilt(100*gen_loss[:,1],51),
          np.arange(0,numIter,valstep),100*val_loss)
-plt.legend(['Discriminator Loss',
+plt.legend(['-Discriminator Loss',
             'Generator Loss',
             '100x L1 loss',
-            'Validation loss'])
+            '100x Validation L1 loss'])
+plt.ylim([0,100])
 plt.show()
 
 #%%
