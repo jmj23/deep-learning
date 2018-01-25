@@ -263,8 +263,31 @@ loss_D_real = loss_fn(output_D_real, K.ones_like(output_D_real))
 loss_D_fake = loss_fn(output_D_fake, K.zeros_like(output_D_fake))
 loss_G_fake = loss_fn(output_D_fake, K.ones_like(output_D_fake))
 
+# weighted L1 loss tensors and masks
+y_true = K.flatten(real_B)
+y_pred = K.flatten(fake_B)
 
-loss_L1 = K.mean(K.abs(fake_B-real_B))
+tis_mask1 = K.cast( K.greater( y_true, 0.01 ), 'float32' )
+tis_mask2 = K.cast( K.less( y_true, 0.3 ), 'float32' )
+tis_mask = tis_mask1 * tis_mask2
+les_mask =  K.cast( K.greater(y_true,0.3), 'float32' )
+air_mask =  K.cast( K.less( y_true, 0.01 ), 'float32' )
+
+tis_true = tis_mask * y_true
+tis_pred = tis_mask * y_pred
+
+air_true = air_mask * y_true
+air_pred = air_mask * y_pred
+
+les_true = les_mask * y_true
+les_pred = les_mask * y_pred
+
+tis_loss = K.mean(K.abs(tis_true - tis_pred), axis=-1)
+air_loss = K.mean(K.abs(air_true - air_pred), axis=-1)
+les_loss = K.mean(K.abs(les_true - les_pred), axis=-1)
+# weighted L1 loss
+loss_L1 = .1*air_loss + .2*tis_loss + .7 * les_loss
+#loss_L1 = K.mean(K.abs(fake_B-real_B))
 
 
 loss_D = loss_D_real + loss_D_fake
@@ -280,7 +303,7 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 #%% training
 print('Starting training...')
 ex_ind = 220
-numIter = 20000
+numIter = 6000
 progstep = 50
 valstep = 200
 b_s = 8
@@ -354,7 +377,7 @@ plt.show()
 #%%
 print('Generating samples')
 from keras.models import load_model
-K.set_learning_phase(0)
+#K.set_learning_phase(0)
 GenModel = load_model(model_filepath,None,False)
 
 # get generator results
