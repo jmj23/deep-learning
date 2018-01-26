@@ -280,6 +280,7 @@ grad_penalty = K.mean(K.square(norm_grad_mixed-1))
 loss_D = loss_D_fake - loss_D_real + λ * grad_penalty
 training_updates = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel.trainable_weights,[],loss_D)
 netD_train = K.function([real_A, real_B, ep_input],[loss_D], training_updates)
+evalDloss = K.function([real_A,real_B,ep_input],[loss_D])
 
 # weighted L1 loss tensors and masks
 y_true = K.flatten(real_B)
@@ -319,16 +320,28 @@ netD_eval = K.function([real_A,real_B],[output_D_real])
 #%% training
 print('Starting training...')
 ex_ind = 124
-numIter = 1000
-progstep = 100
-valstep = 200
+numIter = 20000
+progstep = 50
+valstep = 500
 b_s = 8
 val_b_s = 8
-train_rat = 3
+train_rat = 5
 dis_loss = np.zeros((numIter,2))
 gen_loss = np.zeros((numIter,2))
-val_loss = np.ones((np.int(numIter/valstep),1))
-templosses = np.zeros(np.int(x_val.shape[0]/val_b_s))
+val_loss = np.ones((np.int(numIter/valstep),2))
+templosses = np.zeros((np.int(x_val.shape[0]/val_b_s),2))
+
+# Updatable plot
+plt.ion()
+fig, ax = plt.subplots()
+cond_samp = x_test[ex_ind,...][np.newaxis,...]
+simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
+fulldose_im = y_test[ex_ind,...,0]
+samp_im = np.c_[cond_samp[0,...,0],simfulldose_im,fulldose_im]
+ax.imshow(samp_im,cmap='gray')
+ax.set_axis_off()
+plt.pause(.001)
+plt.draw()
 
 
 print('Training adversarial model')
@@ -358,6 +371,9 @@ for ii in t:
         fulldose_im = y_test[ex_ind,...,0]
         samp_im = np.c_[cond_samp[0,...,0],simfulldose_im,fulldose_im]
         progress_ims[gg] = samp_im
+        ax.imshow(samp_im,cmap='gray')
+        plt.pause(.001)
+        plt.draw()
         gg += 1
     if (ii+1) % valstep ==0:
         tqdm.write('Checking validation loss...')
@@ -365,11 +381,13 @@ for ii in t:
             val_inds = np.arange(bb*val_b_s,np.minimum((bb+1)*val_b_s,x_val.shape[0]))
             cond_batch = x_val[val_inds,...]
             real_batch = y_val[val_inds,...]
+            ϵ = np.random.uniform(size=(b_s, 1, 1 ,1))
             valL1 = netG_eval([cond_batch,real_batch])[0]
-            templosses[bb] = valL1
-        cur_val_loss = np.mean(templosses)
-        if cur_val_loss < np.min(val_loss):
-            tqdm.write('Valdiation loss decreased to {:.02e}'.format(cur_val_loss))
+            valDloss = evalDloss([cond_batch,real_batch,ϵ])[0]
+            templosses[bb] = [valL1,valDloss]
+        cur_val_loss = np.mean(templosses,axis=0)
+        if cur_val_loss[0] < np.min(val_loss,axis=1)[0]:
+            tqdm.write('Valdiation loss decreased to {:.02e}'.format(cur_val_loss[0]))
         GenModel.save(model_filepath,True,False)
         tqdm.write("Saved model to file")
             
@@ -385,11 +403,11 @@ print('Training complete')
 
 # display loss
 from scipy.signal import medfilt
-fig2 = plt.figure(2)
+fig5 = plt.figure(5)
 plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],51),
          np.arange(numIter),medfilt(gen_loss[:,0],51),
          np.arange(numIter),medfilt(100*gen_loss[:,1],51),
-         np.arange(0,numIter,valstep),100*val_loss)
+         np.arange(0,numIter,valstep),100*val_loss[:,0])
 plt.legend(['-Discriminator Loss',
             'Generator Loss',
             '100x L1 loss',
