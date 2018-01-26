@@ -31,7 +31,7 @@ test_subj_vec = [14, 4, 6]
 np.random.seed(seed=2)
 eps = 1e-8
 numFrames = 3
-sCO = 2 # slice cutoff
+sCO = 3 # slice cutoff
 normfac = 20000 # what the images are normalized to. Keep this is mind when
                 # looking at images afterwards
 
@@ -58,7 +58,7 @@ def load_training_input(subj):
     for im in fims:
         im[im<0] = 0
         im /= (np.max(im)+eps)
-    inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-(sCO+1),...]
+    inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-sCO,...]
     
     for fnum in range(1,numFrames):
         frame = LDims[fnum]
@@ -66,7 +66,7 @@ def load_training_input(subj):
             im[im<0]=0
             im /= normfac
             
-        inputarray = np.stack((frame,wims,fims),axis=3)[sCO:-(sCO+1),...]
+        inputarray = np.stack((frame,wims,fims),axis=3)[sCO:-sCO,...]
         inputs = np.concatenate((inputs,inputarray),axis=0)
     return inputs
 
@@ -78,7 +78,7 @@ def load_training_target(subj):
     for im in FDims:
         im[im<0]=0
         im /= normfac
-    targets = np.tile(FDims[sCO:-(sCO+1),...,np.newaxis],(numFrames,1,1,1))
+    targets = np.tile(FDims[sCO:-sCO,...,np.newaxis],(numFrames,1,1,1))
     return targets
 
 #%% Loading training inputs
@@ -134,11 +134,17 @@ aug_targets = np.concatenate((targets,fl_targets,gm_targets),axis=0)
 
 # store training data
 print('Storing train data as HDF5...')
-with h5py.File(savepath, 'x') as hf:
-    hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-with h5py.File(savepath, 'a') as hf:
-    hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
-    
+try:
+    with h5py.File(savepath, 'x') as hf:
+        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
+    with h5py.File(savepath, 'a') as hf:
+        hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
+except Exception as e:
+    os.remove(savepath)
+    with h5py.File(savepath, 'x') as hf:
+        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
+    with h5py.File(savepath, 'a') as hf:
+        hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
 #%%
 del inputs
 del fl_inputs
@@ -174,7 +180,7 @@ def load_eval_input(subj,frame=1):
         im[im<0] = 0
         im /= (np.max(im)+eps)
         
-    inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-(sCO+1),...]
+    inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-sCO,...]
     return inputs
 
 def load_eval_target(subj):
@@ -185,7 +191,7 @@ def load_eval_target(subj):
     for im in FDims:
         im[im<0]=0
         im /= normfac
-    targets = FDims[sCO:-(sCO+1),...,np.newaxis]
+    targets = FDims[sCO:-sCO,...,np.newaxis]
     return targets
 
 val_inputs = load_eval_input(val_subj_vec[0],1)
@@ -219,7 +225,8 @@ with h5py.File(savepath, 'a') as hf:
 #%%
 from VisTools import multi_slice_viewer0
 dnum = 500
-multi_slice_viewer0(np.c_[aug_inputs[:dnum,...,0],aug_inputs[:dnum,...,1],aug_targets[:dnum,...,0]],'Training data')
+disp_inds = np.random.choice(aug_inputs.shape[0], dnum, replace=False)
+multi_slice_viewer0(np.c_[aug_inputs[disp_inds,...,0],aug_inputs[disp_inds,...,1],aug_targets[disp_inds,...,0]],'Training data')
 multi_slice_viewer0(np.c_[val_inputs[...,0],val_inputs[...,1],val_targets[...,0]],'Validation Data')
 multi_slice_viewer0(np.c_[test_inputs[...,0],test_inputs[...,1],test_targets[...,0]],'Test data')
 
