@@ -6,7 +6,7 @@ Created on Mon Nov 13 13:04:09 2017
 @author: jmj136
 """
 import sys
-sys.path.insert(0,'/home/jmj136/KerasFiles')
+sys.path.insert(0,'/home/jmj136/deep-learning')
 import ants
 import numpy as np
 from VisTools import multi_slice_viewer0, registration_viewer
@@ -32,7 +32,7 @@ def display_ants(imglist):
         nparray = np.rollaxis(np.rollaxis(nparray,2,0),2,1)
         arraylist.append(nparray)
     stacked_array = np.dstack(arraylist)
-    multi_slice_viewer0(stacked_array,[])
+    multi_slice_viewer0(stacked_array)
     
 def display_ants_reg(img1,img2):
     nparray1 = img1.numpy()
@@ -175,8 +175,8 @@ def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,reg_CT,nac
     
 #%% Main Script
 
-subjectlist = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-#subjectlist = [4]
+#subjectlist = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+subjectlist = [1]
 
 for subj in subjectlist:
     print('Loading data...')
@@ -198,6 +198,6 @@ for subj in subjectlist:
 #    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,nac_img,nac_img)
     
 #%%
-good_inds= np.arange(16,71)
+good_inds= np.arange(18,77)
 np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
 print('Indices saved')
