@@ -18,7 +18,7 @@ np.random.seed(seed=1)
 # Model Save Path/name
 model_filepath = 'DeepMuMap_pix2pixModel.hdf5'
 # Data path/name
-datapath = 'petrecondata_tvt_v3.hdf5'
+datapath = 'petrecondata_tvt_v4.hdf5'
 
 if not 'x_train' in locals():
     print('Loading data...')
@@ -279,7 +279,7 @@ netD_train = K.function([real_A, real_B, ep_input],[loss_D], training_updates)
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 5 * loss_L1
+loss_G = -loss_D_fake + 10 * loss_L1
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
 netG_train = K.function([real_A, real_B], [loss_G, loss_L1], training_updates)
 
@@ -290,15 +290,15 @@ netD_evalF = K.function([real_A],[output_D_fake])
 #%% training
 print('Starting training...')
 ex_ind = 65
-numIter = 10000
+numIter = 5000
 progstep = 100
 valstep = 250
 b_s = 8
 val_b_s = 8
-train_rat = 3
+train_rat = 5
 dis_loss = np.zeros((numIter,1))
 gen_loss = np.zeros((numIter,2))
-val_loss = np.ones((np.int(numIter/valstep),1))
+val_loss = np.zeros((np.int(numIter/valstep),1))
 templosses = np.zeros(np.int(x_val.shape[0]/val_b_s))
 
 
@@ -308,12 +308,25 @@ progress_ims = np.zeros((np.int(numIter/progstep),256,3*256))
 gg = 0
 vv = 0
 
+# Updatable plot
+plt.ion()
+fig, ax = plt.subplots()
+cond_samp = x_test[ex_ind,...][np.newaxis,...]
+simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
+fulldose_im = y_test[ex_ind,...,0]
+samp_im = np.c_[cond_samp[0,...,0],simfulldose_im,fulldose_im]
+ax.imshow(samp_im,cmap='gray')
+ax.set_axis_off()
+plt.pause(.001)
+plt.draw()
+
+# progress bar iterator
 t = trange(numIter,file=sys.stdout)
 for ii in t:
     for _ in range(train_rat):
         # Train Discriminator
         # grab random training samples
-        batch_inds = np.random.randint(0,x_train.shape[0], size=b_s)
+        batch_inds = np.random.choice(x_train.shape[0], b_s, replace=False)
         cond_batch = x_train[batch_inds,...]
         real_batch = y_train[batch_inds,...]
         # train discrimator
@@ -329,6 +342,9 @@ for ii in t:
         fulldose_im = y_test[ex_ind,...,0]
         samp_im = np.c_[cond_samp[0,...,0],simfulldose_im,fulldose_im]
         progress_ims[gg] = samp_im
+        ax.imshow(samp_im,cmap='gray')
+        plt.pause(.001)
+        plt.draw()
         gg += 1
     if (ii+1) % valstep ==0:
         tqdm.write('Checking validation loss...')
