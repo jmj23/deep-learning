@@ -6,11 +6,13 @@ Created on Sun Jun  4 20:16:21 2017
 """
 import h5py
 import numpy as np
-import skimage.exposure as skexp
+#import skimage.exposure as skexp
 import nibabel as nib
 import os
 import sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
+
+multiSlice = 3
 
 LDtype = '30s'
 #LDtype = '60s'
@@ -36,6 +38,21 @@ normfac = 20000 # what the images are normalized to. Keep this is mind when
                 # looking at images afterwards
 
 #%% Training data loading functions
+def ConvertToMultiSlice(array,MS=3):
+    tshp = array.shape
+    MSos = np.int((MS-1)/2) #MultiSlice Offset
+    MSarray = np.zeros((tshp[0],MS,tshp[1],tshp[2],tshp[3]))
+    for ss in range(MSos,tshp[0]-MSos):
+        MSarray[ss,0,...] = array[ss-1]
+        MSarray[ss,1,...] = array[ss]
+        MSarray[ss,2,...] = array[ss+1]
+    MSarray[0,0,...] = array[0]
+    MSarray[0,1,...] = array[0]
+    MSarray[0,2,...] = array[1]
+    MSarray[-1,0,...] = array[-2]
+    MSarray[-1,1,...] = array[-1]
+    MSarray[-1,2,...] = array[-1]
+    return MSarray
 # Inputs
 def load_training_input(subj):
     waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
@@ -59,6 +76,7 @@ def load_training_input(subj):
         im[im<0] = 0
         im /= (np.max(im)+eps)
     inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-sCO,...]
+    inputs = ConvertToMultiSlice(inputs,multiSlice)
     
     for fnum in range(1,numFrames):
         frame = LDims[fnum]
@@ -67,6 +85,7 @@ def load_training_input(subj):
             im /= normfac
             
         inputarray = np.stack((frame,wims,fims),axis=3)[sCO:-sCO,...]
+        inputarray = ConvertToMultiSlice(inputarray,multiSlice)
         inputs = np.concatenate((inputs,inputarray),axis=0)
     return inputs
 
@@ -81,7 +100,7 @@ def load_training_target(subj):
     targets = np.tile(FDims[sCO:-sCO,...,np.newaxis],(numFrames,1,1,1))
     return targets
 
-#%% Loading training inputs
+#%% Load, augment and save training inputs
 print('Loading inputs')
 subj = train_subj_vec[0]
 print('Loading training subject',subj,'...')
@@ -91,8 +110,39 @@ for subj in train_subj_vec[1:]:
     print('Loading training subject',subj,'...')
     newinputs = load_training_input(subj)
     inputs = np.concatenate((inputs,newinputs),axis=0)
-    
-#%% Load training targets
+
+## Augment training inputs
+#print('Augmenting training inputs...')
+## LR flips
+#fl_inputs = np.flip(inputs,3)
+## gamma corrections
+#gammas = .5 + np.random.rand(inputs.shape[0],inputs.shape[-1])
+#gm_inputs = np.copy(inputs)
+#for ii in range(gm_inputs.shape[0]):
+#    for jj in range(gm_inputs.shape[-1]):
+#        gm_inputs[ii,...,jj] = skexp.adjust_gamma(gm_inputs[ii,...,jj],gamma=gammas[ii,jj])
+#        
+## combine together
+#aug_inputs = np.concatenate((inputs,fl_inputs,gm_inputs),axis=0)
+aug_inputs = inputs
+
+# store training data
+print('Storing training inputs as HDF5...')
+try:
+    with h5py.File(savepath, 'x') as hf:
+        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
+except Exception as e:
+    os.remove(savepath)
+    with h5py.File(savepath, 'x') as hf:
+        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
+        
+del aug_inputs
+del inputs
+#del fl_inputs
+#del gm_inputs
+del newinputs
+
+#%% Load, augment, and save training targets
 print('Loading training targets')
 subj = train_subj_vec[0]
 print('Loading training subject',subj,'...')
@@ -103,56 +153,26 @@ for subj in train_subj_vec[1:]:
     newtargets = load_training_target(subj)
     targets = np.concatenate((targets,newtargets),axis=0)
     
-#%% augment training data
-print('Augmenting training data...')
-# LR flips
-fl_inputs = np.flip(inputs,2)
-fl_targets = np.flip(targets,2)
-
-# gamma corrections
-gammas = .5 + np.random.rand(inputs.shape[0])
-gm_inputs = np.copy(inputs)
-for ii in range(gm_inputs.shape[0]):
-    gm_inputs[ii,...,1] = skexp.adjust_gamma(gm_inputs[ii,...,1],gamma=gammas[ii])
-    gm_inputs[ii,...,2] = skexp.adjust_gamma(gm_inputs[ii,...,2],gamma=gammas[ii])
-    
-gm_targets = np.copy(targets)
-
-# combine together
-aug_inputs = np.concatenate((inputs,fl_inputs,gm_inputs),axis=0)
-aug_targets = np.concatenate((targets,fl_targets,gm_targets),axis=0)
-
-
-#%% finalize training data
-# randomize inputs
-#print('Randomizing training inputs...')
-#numS = aug_inputs.shape[0]
-#sort_r = np.random.permutation(numS)
-#np.take(aug_inputs,sort_r,axis=0,out=aug_inputs)
-#np.take(aug_targets,sort_r,axis=0,out=aug_targets)
-
+## augment training targets
+#print('Augmenting training targets...')
+## LR flips
+#fl_targets = np.flip(targets,3)
+## gamma corrections    
+#gm_targets = np.copy(targets)
+#
+## combine together
+#aug_targets = np.concatenate((targets,fl_targets,gm_targets),axis=0)
+aug_targets = targets
 
 # store training data
-print('Storing train data as HDF5...')
-try:
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-    with h5py.File(savepath, 'a') as hf:
-        hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
-except Exception as e:
-    os.remove(savepath)
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-    with h5py.File(savepath, 'a') as hf:
-        hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
+print('Storing training targets as HDF5...')
+with h5py.File(savepath, 'a') as hf:
+    hf.create_dataset("train_targets",  data=aug_targets,dtype='f')
+
 #%%
-del inputs
-del fl_inputs
-del gm_inputs
 del targets
-del fl_targets
-del gm_targets
-del newinputs
+#del fl_targets
+#del gm_targets
 del newtargets
 
 #%% Validation data
@@ -181,7 +201,7 @@ def load_eval_input(subj,frame=1):
         im /= (np.max(im)+eps)
         
     inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-sCO,...]
-    return inputs
+    return ConvertToMultiSlice(inputs,multiSlice)
 
 def load_eval_target(subj):
     print('Loading evaluation target for subject',subj,'...')
@@ -223,18 +243,16 @@ with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("val_targets",  data=val_targets,dtype='f')
     hf.create_dataset("test_targets",  data=test_targets,dtype='f')
 #%%
-from VisTools import multi_slice_viewer0
-dnum = 500
-disp_inds = np.random.choice(aug_inputs.shape[0], dnum, replace=False)
-multi_slice_viewer0(np.c_[aug_inputs[disp_inds,...,0],aug_inputs[disp_inds,...,1],aug_targets[disp_inds,...,0]],'Training data')
-multi_slice_viewer0(np.c_[val_inputs[...,0],val_inputs[...,1],val_targets[...,0]],'Validation Data')
-multi_slice_viewer0(np.c_[test_inputs[...,0],test_inputs[...,1],test_targets[...,0]],'Test data')
+#from VisTools import multi_slice_viewer0
+#dnum = 500
+#disp_inds = np.random.choice(aug_inputs.shape[0], dnum, replace=False)
+#multi_slice_viewer0(np.c_[aug_inputs[disp_inds,...,0],aug_inputs[disp_inds,...,1],aug_targets[disp_inds,...,0]],'Training data')
+#multi_slice_viewer0(np.c_[val_inputs[...,0],val_inputs[...,1],val_targets[...,0]],'Validation Data')
+#multi_slice_viewer0(np.c_[test_inputs[...,0],test_inputs[...,1],test_targets[...,0]],'Test data')
 
 del val_inputs
 del val_targets
 del test_inputs
 del test_targets
-del aug_inputs
-del aug_targets
 
 print('done')
