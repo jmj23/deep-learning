@@ -77,9 +77,9 @@ def weighted_mse(y_true, y_pred):
     y_true = K.flatten( y_true )
     y_pred = K.flatten( y_pred )
 
-    bone_mask = K.cast( K.greater( y_true, 1.0 ), 'float32' )
+    bone_mask = K.cast( K.greater( y_true, 0.5 ), 'float32' )
     air_mask =  K.cast( K.less( y_true, 0.02 ), 'float32' )
-    soft1_mask = K.cast( K.less( y_true, 1 ), 'float32' )
+    soft1_mask = K.cast( K.less( y_true, 0.5 ), 'float32' )
     soft2_mask = K.cast( K.greater( y_true, 0.02 ), 'float32' )
     soft_mask = soft1_mask * soft2_mask
     
@@ -96,7 +96,7 @@ def weighted_mse(y_true, y_pred):
     air_loss = K.mean(K.square(air_true - air_pred), axis=-1)
     soft_loss = K.mean(K.square(soft_true - soft_pred), axis=-1)
     
-    return 1.3*bone_loss + 1.5*air_loss + soft_loss
+    return 2*bone_loss + 1.5*air_loss + soft_loss
 
 def weighted_mae(y_true, y_pred):
     y_true = K.flatten( y_true )
