@@ -15,14 +15,33 @@ import ants
 datapath = 'RegNIFTIs/subj{:03d}_{}.nii'
 savepath = 'petrecondata_tvt_v4.hdf5'
 
-subj_vec = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+multiSlice = 3
+
+subj_vec = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
 val_num = 3
-test_num = 2
+test_num = 3
+train_num = len(subj_vec)-val_num-test_num
 np.random.seed(seed=2)
 
 y,x = np.ogrid[-3: 3+1, -3: 3+1]
 strel = x**2+y**2 <= 3**2
-eps = 1e-9
+eps = 1e-12
+#%%
+def ConvertToMultiSlice(array,MS=3):
+    tshp = array.shape
+    MSos = np.int((MS-1)/2) #MultiSlice Offset
+    MSarray = np.zeros((tshp[0],MS,tshp[1],tshp[2],tshp[3]))
+    for ss in range(MSos,tshp[0]-MSos):
+        MSarray[ss,0,...] = array[ss-1]
+        MSarray[ss,1,...] = array[ss]
+        MSarray[ss,2,...] = array[ss+1]
+    MSarray[0,0,...] = array[0]
+    MSarray[0,1,...] = array[0]
+    MSarray[0,2,...] = array[1]
+    MSarray[-1,0,...] = array[-2]
+    MSarray[-1,1,...] = array[-1]
+    MSarray[-1,2,...] = array[-1]
+    return MSarray
 #%% Inputs
 print('Loading inputs')
 
@@ -51,6 +70,8 @@ for im in outims:
 #    im /= 1500
 inputarray = np.stack((wims,fims,inims,outims),axis=3)
 inputs = inputarray[good_inds]
+if multiSlice != 1:
+    inputs = ConvertToMultiSlice(inputs,multiSlice)
 sliceNums = [inputs.shape[0]]
 
 for subj in subj_vec[1:]:
@@ -79,6 +100,8 @@ for subj in subj_vec[1:]:
 #        im /= 1500
     inputarray = np.stack((wims,fims,inims,outims),axis=3)
     new_inputs = inputarray[good_inds]
+    if multiSlice != 1:
+        new_inputs = ConvertToMultiSlice(new_inputs,multiSlice)
     inputs = np.concatenate((inputs,new_inputs),axis=0)
     sliceNums.append(new_inputs.shape[0])
 #%% HU-LAC conversion
@@ -136,6 +159,7 @@ def MakeCTLabels(CTims):
     n_values = 4
     tis_categorical = np.eye(n_values)[tis_classes]
     return tis_categorical.astype(np.int)
+
 #%%
 print('Loading targets')
 
@@ -165,12 +189,13 @@ for subj in subj_vec[1:]:
 #%% Split validation,testing data
 # get slice ranges corresponding to subjects
 sliceNumArray = np.array(sliceNums)
-sliceCumArray = np.cumsum(sliceNumArray)
+sliceCumArray = np.concatenate(([0],np.cumsum(sliceNumArray)))
 # pick out subjects
 numSubjs = sliceNumArray.shape[0]
 sep_subjs = np.random.choice(np.arange(numSubjs),val_num+test_num,replace=False)
 val_subjs = sep_subjs[:val_num]
 test_subjs = sep_subjs[val_num:]
+train_subjs = np.delete(np.arange(numSubjs),sep_subjs)
 # Get validation data
 val_inds = np.concatenate(([np.arange(sliceCumArray[ind],sliceCumArray[ind+1]) for ind in val_subjs]))
 val_inputs = np.take(inputs,val_inds,axis=0)
@@ -187,14 +212,12 @@ inputs = np.delete(inputs,remove_inds,axis=0)
 reg_targets = np.delete(reg_targets,remove_inds,axis=0)
 class_targets = np.delete(class_targets,remove_inds,axis=0)
 
-
 # store validation and testing data to HDF5 file
 print('Storing validation and testing data as HDF5...')
 try:
     with h5py.File(savepath, 'x') as hf:
         hf.create_dataset("val_inputs",  data=val_inputs,dtype='f')
         hf.create_dataset("test_inputs", data=test_inputs,dtype='f')
-    with h5py.File(savepath, 'a') as hf:
         hf.create_dataset("val_reg_targets",  data=val_reg_targets,dtype='f')
         hf.create_dataset("test_reg_targets",  data=test_reg_targets,dtype='f')
         hf.create_dataset("val_class_targets",  data=val_class_targets,dtype='f')
@@ -204,7 +227,6 @@ except Exception as e:
     with h5py.File(savepath, 'x') as hf:
         hf.create_dataset("val_inputs",  data=val_inputs,dtype='f')
         hf.create_dataset("test_inputs", data=test_inputs,dtype='f')
-    with h5py.File(savepath, 'a') as hf:
         hf.create_dataset("val_reg_targets",  data=val_reg_targets,dtype='f')
         hf.create_dataset("test_reg_targets",  data=test_reg_targets,dtype='f')
         hf.create_dataset("val_class_targets",  data=val_class_targets,dtype='f')
@@ -213,7 +235,10 @@ except Exception as e:
 #%% augment training data
 print('Augmenting training data...')
 # LR flips
-fl_inputs = np.flip(inputs,1)
+if multiSlice != 1:
+    fl_inputs = np.flip(inputs,2)
+else:
+    fl_inputs = np.flip(inputs,1)
 fl_reg_targets = np.flip(reg_targets,1)
 fl_class_targets = np.flip(class_targets,1)
 
@@ -236,19 +261,18 @@ aug_class_targets = np.concatenate((class_targets,fl_class_targets,gm_class_targ
 #%% finalize training data
 
 # randomize inputs
-print('Randomizing training inputs...')
-numS = aug_inputs.shape[0]
-sort_r = np.random.permutation(numS)
-np.take(aug_inputs,sort_r,axis=0,out=aug_inputs)
-np.take(aug_reg_targets,sort_r,axis=0,out=aug_reg_targets)
-np.take(aug_class_targets,sort_r,axis=0,out=aug_class_targets)
+#print('Randomizing training inputs...')
+#numS = aug_inputs.shape[0]
+#sort_r = np.random.permutation(numS)
+#np.take(aug_inputs,sort_r,axis=0,out=aug_inputs)
+#np.take(aug_reg_targets,sort_r,axis=0,out=aug_reg_targets)
+#np.take(aug_class_targets,sort_r,axis=0,out=aug_class_targets)
 
 
 # store training data
 print('Storing train data as HDF5...')
 with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("train_reg_targets",  data=aug_reg_targets,dtype='f')
     hf.create_dataset("train_class_targets",  data=aug_class_targets,dtype='f')
     
@@ -256,12 +280,16 @@ print('done')
 #%%
 del val_inputs
 del val_reg_targets
+del val_class_targets
+
 del test_inputs
 del test_reg_targets
 del test_class_targets
+
 del aug_inputs
 del aug_reg_targets
 del aug_class_targets
+
 del inputs
 del fl_inputs
 del gm_inputs
@@ -271,3 +299,7 @@ del fl_reg_targets
 del gm_reg_targets
 del fl_class_targets
 del gm_class_targets
+del new_class_targets
+del new_reg_targets
+del new_inputs
+del inputarray
