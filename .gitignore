@@ -1,2 +1,7 @@
 *.hdf5
 *.mat
+*.png
+*.nii
+*.h5
+*.ini
+*.npy
