@@ -5,23 +5,40 @@ Created on Sun Jun  4 20:16:21 2017
 @author: JMJ136
 """
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 import numpy as np
 import ants
 from keras.models import load_model
-from CustomMetrics import weighted_mse, dice_coef_multi
 
 datapath = 'RegNIFTIs/subj{:03d}_{}.nii'
 outputpath = 'OutputNIFTIs/subj{:03d}_{}.nii'
-subj_vec = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+subj_vec = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
 eps = 1e-9
+MS = 3 # multislice number
 
 #%% Load model
-RegModel = load_model("MuMapModel_v3_best.hdf5",None,False)
+RegModel = load_model("MuMapModel_best.hdf5",None,False)
+
+#%% Multislice maker for inputs
+def ConvertToMultiSlice(array,MS=3):
+    tshp = array.shape
+    MSos = np.int((MS-1)/2) #MultiSlice Offset
+    MSarray = np.zeros((tshp[0],MS,tshp[1],tshp[2],tshp[3]))
+    for ss in range(MSos,tshp[0]-MSos):
+        MSarray[ss,0,...] = array[ss-1]
+        MSarray[ss,1,...] = array[ss]
+        MSarray[ss,2,...] = array[ss+1]
+    MSarray[0,0,...] = array[0]
+    MSarray[0,1,...] = array[0]
+    MSarray[0,2,...] = array[1]
+    MSarray[-1,0,...] = array[-2]
+    MSarray[-1,1,...] = array[-1]
+    MSarray[-1,2,...] = array[-1]
+    return MSarray
     
-# Loop over all subjects
+#%% Loop over all subjects
 for ii in range(len(subj_vec)):
     #%% Inputs
     subj = subj_vec[ii]
@@ -43,7 +60,7 @@ for ii in range(len(subj_vec)):
     for im in outims:
         im[im<0]=0
         im /= (np.max(im)+eps)
-    inputs = np.stack((wims,fims,inims,outims),axis=3)
+    inputs = ConvertToMultiSlice(np.stack((wims,fims,inims,outims),axis=3),MS)
     
     #%% Make predictions on MR data
     output = RegModel.predict(inputs,batch_size=16)
