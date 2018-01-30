@@ -23,6 +23,9 @@ model_filepath = 'LowDosePET_pix2pixModel_30s.hdf5'
 datapath = 'lowdosePETdata_30s.hdf5'
 #datapath = 'lowdosePETdata_60s.hdf5'
 
+MS = 3
+MSoS = 1
+
 if not 'x_train' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
@@ -40,7 +43,7 @@ import keras.backend as K
 K.set_learning_phase(1)
 from keras.layers import Input, Cropping2D, Conv2D, concatenate, add, Lambda
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
-from keras.layers import UpSampling2D, Reshape
+from keras.layers import UpSampling2D, Conv3D, Reshape
 from keras.layers.advanced_activations import LeakyReLU, ELU
 from keras.models import Model
 from keras.initializers import RandomNormal
@@ -61,16 +64,20 @@ def GeneratorModel(input_shape):
     lay_input = Input(shape=input_shape,name='input_layer')
     
     padamt = 1
-    crop = Cropping2D(cropping=((0, padamt), (0, padamt)), data_format=None)(lay_input)
-    filtnum = 32
+    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(lay_input)
+    bn = BatchNormalization()(MSconv)
+    MSact = ELU(name='MSelu')(bn)
+    MSconvRS = Reshape((254,254,16))(MSact)
+
+    filtnum = 20
     # contracting block 1
     rr = 1
     lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(crop)
+                       name='Conv1_{}'.format(rr))(MSconvRS)
     lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(crop)
+                       name='Conv3_{}'.format(rr))(MSconvRS)
     lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(crop)
+                       name='Conv51_{}'.format(rr))(MSconvRS)
     lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv52_{}'.format(rr))(lay_conv51)
     lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
@@ -160,7 +167,7 @@ def GeneratorModel(input_shape):
     lay_pad = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(lay_act)
     lay_reg = Conv2D(1,(1,1), activation='linear',kernel_initializer=conv_initG,
                        name='regression')(lay_pad)
-    in0 = Lambda(lambda x : x[...,0],name='channel_split')(lay_input)
+    in0 = Lambda(lambda x : x[:,1,...,0],name='channel_split')(lay_input)
     in0 = Reshape([256,256,1])(in0)
     lay_res = add([in0,lay_reg],name='residual')
     
@@ -172,8 +179,11 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     # Conditional Inputs
     lay_cond_input = Input(shape=input_shape,name='conditional_input')
     
-    xcond = Conv2D(filtnum,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initD,
-                       name='FirstCondLayer')(lay_cond_input)
+    MSconv = Conv3D(8,(3,3,3),padding='valid',name='MSconv')(lay_cond_input)
+    MSact = LeakyReLU(name='MSleaky')(MSconv)
+    MSconvRS = Reshape((254,254,8))(MSact)    
+    xcond = Conv2D(filtnum,(3,3),padding='same',strides=(1,1),kernel_initializer=conv_initD,
+                       name='FirstCondLayer')(MSconvRS)
     xcond = LeakyReLU(alpha=0.2,name='leaky_cond')(xcond)
     
     
@@ -259,7 +269,7 @@ lrG = 2e-4
 λ = 10  # grad penalty weighting
 
 # create models
-DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],16)
+DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],8)
 GenModel = GeneratorModel(x_train.shape[1:])
 
 # get tensors of inputs and outputs
@@ -270,7 +280,7 @@ output_D_real = DisModel([real_A, real_B])
 output_D_fake = DisModel([real_A, fake_B])
 # create mixed output for gradient penalty
 ep_input = K.placeholder(shape=(None,1,1,1))
-mixed_B = Input(shape=x_train.shape[1:],
+mixed_B = Input(shape=y_train.shape[1:],
                     tensor=ep_input * real_B + (1-ep_input) * fake_B)
 output_D_mixed = DisModel([real_A,mixed_B])
 # discriminator losses
@@ -328,16 +338,16 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 
 #%% training
 print('Starting training...')
-ex_ind = 124
-numIter = 10000
-progstep = 50
+ex_ind = 50
+numIter = 15000
+progstep = 100
 valstep = 500
 b_s = 8
 val_b_s = 8
 train_rat = 5
 dis_loss = np.zeros((numIter,2))
 gen_loss = np.zeros((numIter,2))
-val_loss = np.ones((np.int(numIter/valstep),2))
+val_loss = np.zeros((np.int(numIter/valstep),2))
 templosses = np.zeros((np.int(x_val.shape[0]/val_b_s),2))
 
 # Updatable plot
@@ -346,7 +356,7 @@ fig, ax = plt.subplots()
 cond_samp = x_test[ex_ind,...][np.newaxis,...]
 simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
 fulldose_im = y_test[ex_ind,...,0]
-samp_im = np.c_[cond_samp[0,...,0],simfulldose_im,fulldose_im]
+samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
 ax.imshow(samp_im,cmap='gray')
 ax.set_axis_off()
 plt.pause(.001)
@@ -378,7 +388,7 @@ for ii in t:
         cond_samp = x_test[ex_ind,...][np.newaxis,...]
         simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
         fulldose_im = y_test[ex_ind,...,0]
-        samp_im = np.c_[cond_samp[0,...,0],simfulldose_im,fulldose_im]
+        samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
         progress_ims[gg] = samp_im
         ax.imshow(samp_im,cmap='gray')
         plt.pause(.001)
@@ -448,4 +458,4 @@ print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3)
 from VisTools import multi_slice_viewer0
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
-multi_slice_viewer0(np.c_[x_test[...,0],test_output[...,0],y_test[...,0]],'Test Images',SSIMs)
+multi_slice_viewer0(np.c_[x_test[:,1,...,0],test_output[...,0],y_test[...,0]],'Test Images',SSIMs)
