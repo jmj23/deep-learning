@@ -193,7 +193,8 @@ print("Metrics on test data: {}".format(score))
 #plt.plot(batches,hist.val_loss,'m-')
 #
 #plt.show()
-#%%
+#%% Display example results
+RegModel = load_model(model_filepath,None,False)
 print('Generating samples')
 # regression result
 pr_bs = np.minimum(16,x_test.shape[0])
@@ -227,7 +228,7 @@ test_class_inds = np.argmax(class_output,axis=3)
 ytest_class_inds = np.argmax(y_class_test,axis=3)
 
 from VisTools import multi_slice_viewer0
-multi_slice_viewer0(np.c_[x_test[...,0],reg_output[...,0],y_reg_test[...,0],ytest_class_inds/3,test_class_inds/3],SSIMs)
-multi_slice_viewer0(np.c_[x_val[...,0],val_reg_output[...,0],y_reg_val[...,0],yval_class_inds/3,val_class_inds/3],val_SSIMs)
+multi_slice_viewer0(np.c_[x_test[...,0],reg_output[...,0],y_reg_test[...,0],ytest_class_inds/3,test_class_inds/3],'Test Display',SSIMs)
+multi_slice_viewer0(np.c_[x_val[...,0],val_reg_output[...,0],y_reg_val[...,0],yval_class_inds/3,val_class_inds/3],'Validation display',val_SSIMs)
 
 
