@@ -22,8 +22,8 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 dual_output = True
 numEp = 50
-b_s = [4,4,4,4,4,4,8,8,8,8,8,8]
-filterMult = [8,8,8,16,16,16,8,8,8,16,16,16]
+b_s = [4,4,4,4,4,4,4,4,8,8,8,8,8,8,8,8]
+filterMult = [8,8,8,8,16,16,16,16,8,8,8,8,16,16,16,16]
 assert len(b_s) == len(filterMult)
 numRep = len(b_s)
 #%%
@@ -144,7 +144,7 @@ def BlockModel_reg(samp_input,dual_output,fnum=8):
     return returnModel
 
 #%% Train multiple times and keep best model
-curBest = np.infty
+curBest = 0.0219
 scores = np.zeros((numRep,3))
 for rep in range(numRep):
     # Set callbacks
