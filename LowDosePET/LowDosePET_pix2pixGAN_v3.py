@@ -65,7 +65,7 @@ def batchnorm():
     return BatchNormalization(momentum=0.9, axis=-1, epsilon=1.01e-5,
                                    gamma_initializer = gamma_init)
 
-use_bn = True
+use_bn = False
 
 #%% Generator Model
 def GeneratorModel(input_shape):
@@ -373,15 +373,15 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 #%% training
 print('Starting training...')
 ex_ind = 50
-numIter = 100
-progstep = 10
+numIter = 2000
+progstep = 50
 valstep = 50
 b_s = 8
 val_b_s = 8
 train_rat = 5
-dis_loss = np.zeros((numIter,1))
+dis_loss = np.zeros((numIter))
 gen_loss = np.zeros((numIter,2))
-val_loss = np.zeros((np.int(numIter/valstep),2))
+val_loss = np.ones((np.int(numIter/valstep),2))
 templosses = np.zeros((np.int(x_val.shape[0]/val_b_s),2))
 
 # Updatable plot
