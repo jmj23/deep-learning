@@ -12,12 +12,14 @@ import numpy as np
 import h5py
 import time
 from tqdm import tqdm, trange
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 np.random.seed(seed=1)
+import keras.backend as K
+K.set_learning_phase(1)
 #%%
 # Model Save Path/name
-model_filepath = 'LowDosePET_pix2pixModel_30s.hdf5'
-#model_filepath = 'LowDosePET_pix2pixModel_60s.hdf5'
+model_filepath = 'LowDosePET_pix2pixModel_30s.h5'
+#model_filepath = 'LowDosePET_pix2pixModel_60s.h5'
 
 # Data path/name
 datapath = 'lowdosePETdata_30s.hdf5'
@@ -39,8 +41,6 @@ if not 'x_train' in locals():
 #%% Keras imports and initializations
 # Weights initializations
 # bias are initailized as 0
-import keras.backend as K
-K.set_learning_phase(1)
 from keras.layers import Input, Cropping2D, Conv2D, concatenate, add, Lambda
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D, Conv3D, Reshape
@@ -61,104 +61,105 @@ def batchnorm():
 
 #%% Generator Model
 def GeneratorModel(input_shape):
-    lay_input = Input(shape=input_shape,name='input_layer')
+    filtnum = 16
     
+    lay_input = Input(shape=input_shape,name='input_layer')
+        
     padamt = 1
-    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(lay_input)
+    MSconv = Conv3D(filtnum,(3,3,3),padding='valid',name='MSconv')(lay_input)
     bn = BatchNormalization()(MSconv)
     MSact = ELU(name='MSelu')(bn)
     MSconvRS = Reshape((254,254,16))(MSact)
-
-    filtnum = 20
+    
     # contracting block 1
     rr = 1
-    lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
+    lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initG,
                        name='Conv1_{}'.format(rr))(MSconvRS)
-    lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+    lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv3_{}'.format(rr))(MSconvRS)
-    lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+    lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv51_{}'.format(rr))(MSconvRS)
-    lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+    lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv52_{}'.format(rr))(lay_conv51)
     lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-    lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
+    lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
     bn = BatchNormalization()(lay_conv_all)
     lay_act = ELU(name='elu{}_1'.format(rr))(bn)
-    lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
+    lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
                        name='ConvStride_{}'.format(rr))(lay_act)
     lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
     act_list = [lay_act]
     
     # contracting blocks 2-3
-    for rr in range(2,3):
-        lay_conv1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
+    for rr in range(2,4):
+        lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initG,
                        name='Conv1_{}'.format(rr))(lay_act)
-        lay_conv3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+        lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv3_{}'.format(rr))(lay_act)
-        lay_conv51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+        lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv51_{}'.format(rr))(lay_act)
-        lay_conv52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+        lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv52_{}'.format(rr))(lay_conv51)
         lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-        lay_conv_all = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
+        lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
         bn = BatchNormalization()(lay_conv_all)
         lay_act = ELU(name='elu_{}'.format(rr))(bn)
-        lay_stride = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
+        lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
                        name='ConvStride_{}'.format(rr))(lay_act)
         lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
         act_list.append(lay_act)
     
     # expanding block 3
-    dd=2
-    lay_deconv1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
+    dd=3
+    lay_deconv1 = Conv2D(filtnum*(2**(dd-1)),(1,1),padding='same',kernel_initializer=conv_initG,
                        name='DeConv1_{}'.format(dd))(lay_act)
-    lay_deconv3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
+    lay_deconv3 = Conv2D(filtnum*(2**(dd-1)),(3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv3_{}'.format(dd))(lay_act)
-    lay_deconv51 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
+    lay_deconv51 = Conv2D(filtnum*(2**(dd-1)), (3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv51_{}'.format(dd))(lay_act)
-    lay_deconv52 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
+    lay_deconv52 = Conv2D(filtnum*(2**(dd-1)), (3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv52_{}'.format(dd))(lay_deconv51)
     lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
-    lay_deconv_all = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
+    lay_deconv_all = Conv2D(filtnum*(2**(dd-1)),(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='DeConvAll_{}'.format(dd))(lay_merge)
     bn = BatchNormalization()(lay_deconv_all)
     lay_act = ELU(name='elu_d{}'.format(dd))(bn)
     
     lay_up = UpSampling2D()(lay_act)
     
-    lay_cleanup = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
+    lay_cleanup = Conv2DTranspose(filtnum*(2**(dd-1)), (3, 3),kernel_initializer=conv_initG,
                        name='cleanup{}_1'.format(dd))(lay_up)
     lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
-    lay_cleanup = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
+    lay_cleanup = Conv2D(filtnum*(2**(dd-1)), (3,3), padding='same',kernel_initializer=conv_initG,
                        use_bias=False,name='cleanup{}_2'.format(dd))(lay_act)
     bn = BatchNormalization()(lay_cleanup)
     lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
     
     # expanding blocks 2-1
-    expnums = list(range(1,2))
+    expnums = list(range(1,3))
     expnums.reverse()
     for dd in expnums:
         lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
-        lay_deconv1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
+        lay_deconv1 = Conv2D(filtnum*(2**(dd-1)),(1,1),padding='same',kernel_initializer=conv_initG,
                        name='DeConv1_{}'.format(dd))(lay_skip)
-        lay_deconv3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
+        lay_deconv3 = Conv2D(filtnum*(2**(dd-1)),(3,3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv3_{}'.format(dd))(lay_skip)
-        lay_deconv51 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
+        lay_deconv51 = Conv2D(filtnum*(2**(dd-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv51_{}'.format(dd))(lay_skip)
-        lay_deconv52 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
+        lay_deconv52 = Conv2D(filtnum*(2**(dd-1)), (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='DeConv52_{}'.format(dd))(lay_deconv51)
         lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
-        lay_deconv_all = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
+        lay_deconv_all = Conv2D(filtnum*(2**(dd-1)),(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='DeConvAll_{}'.format(dd))(lay_merge)
         bn = BatchNormalization()(lay_deconv_all)
         lay_act = ELU(name='elu_d{}'.format(dd))(bn)
         lay_up = UpSampling2D()(lay_act)        
-        lay_cleanup = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
+        lay_cleanup = Conv2DTranspose(filtnum*(2**(dd-1)), (3, 3),kernel_initializer=conv_initG,
                        name='cleanup{}_1'.format(dd))(lay_up)
         lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
-        lay_cleanup = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
+        lay_cleanup = Conv2D(filtnum*(2**(dd-1)), (3,3), padding='same',kernel_initializer=conv_initG,
                        use_bias=False,name='cleanup{}_2'.format(dd))(lay_act)
         bn = BatchNormalization()(lay_cleanup)
         lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
@@ -330,7 +331,7 @@ loss_L1w = .05*air_loss + .15*tis_loss + .6 * les_loss + .2 * lesB_loss
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 20 * loss_L1w
+loss_G = -loss_D_fake + 30 * loss_L1w
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
 netG_train = K.function([real_A, real_B], [loss_G, loss_L1], training_updates)
 
@@ -338,10 +339,11 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 
 #%% training
 print('Starting training...')
+from keras import models
 ex_ind = 50
 numIter = 15000
-progstep = 100
-valstep = 500
+progstep = 50
+valstep = 50
 b_s = 8
 val_b_s = 8
 train_rat = 5
@@ -357,8 +359,9 @@ cond_samp = x_test[ex_ind,...][np.newaxis,...]
 simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
 fulldose_im = y_test[ex_ind,...,0]
 samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
-ax.imshow(samp_im,cmap='gray')
+ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
 ax.set_axis_off()
+ax.set_clip_box([0,1])
 plt.pause(.001)
 plt.draw()
 
@@ -390,7 +393,7 @@ for ii in t:
         fulldose_im = y_test[ex_ind,...,0]
         samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
         progress_ims[gg] = samp_im
-        ax.imshow(samp_im,cmap='gray')
+        ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
         plt.pause(.001)
         plt.draw()
         gg += 1
@@ -407,7 +410,7 @@ for ii in t:
         cur_val_loss = np.mean(templosses,axis=0)
         if cur_val_loss[0] < np.min(val_loss,axis=1)[0]:
             tqdm.write('Valdiation loss decreased to {:.02e}'.format(cur_val_loss[0]))
-        GenModel.save(model_filepath,True,False)
+        models.save_model(GenModel,model_filepath,True,False)
         tqdm.write("Saved model to file")
             
         val_loss[vv] = cur_val_loss           
@@ -419,6 +422,12 @@ t.close()
 del t
 
 print('Training complete')
+
+model_json = GenModel.to_json()
+with open("model.json", "w") as json_file:
+    json_file.write(model_json)
+GenModel.save_weights("model.h5")
+print('Model saved')
 
 # display loss
 from scipy.signal import medfilt
@@ -436,14 +445,23 @@ plt.show()
 
 #%%
 print('Generating samples')
-from keras.models import load_model
+from keras.models import load_model, model_from_json
 
-GenModel = load_model(model_filepath,None,False)
+#~#~#~#~#~#~#~#~#~#~#~#~#~#
+json_file = open('model.json', 'r')
+loaded_model_json = json_file.read()
+json_file.close()
+TestModel = model_from_json(loaded_model_json)
+TestModel.load_weights("model.h5")
+print("Loaded model from disk")
+#~#~#~#~#~#~#~#~#~#~#~#~#~#
+
+#GenModel = load_model(model_filepath,None,True)
+#GenModel.load_weights(model_filepath)
 
 # get generator results
-pr_bs = np.minimum(16,x_test.shape[0])
 time1 = time.time()
-test_output = GenModel.predict(x_test,batch_size=pr_bs)
+test_output = TestModel.predict(x_test)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/x_test.shape[0],' ms per slice')
 # calculate SSIMs
