@@ -464,7 +464,7 @@ print('Backup Model saved')
 # display loss
 from scipy.signal import medfilt
 fig5 = plt.figure(5)
-plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],5),
+plt.plot(np.arange(numIter),-medfilt(dis_loss,5),
          np.arange(numIter),medfilt(gen_loss[:,0],5),
          np.arange(numIter),medfilt(100*gen_loss[:,1],5),
          np.arange(0,numIter,valstep),100*val_loss[:,0])
