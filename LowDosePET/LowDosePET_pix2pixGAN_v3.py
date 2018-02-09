@@ -373,9 +373,9 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 #%% training
 print('Starting training...')
 ex_ind = 50
-numIter = 2000
-progstep = 50
-valstep = 50
+numIter = 10000
+progstep = 100
+valstep = 100
 b_s = 8
 val_b_s = 8
 train_rat = 5
@@ -442,8 +442,10 @@ for ii in t:
         cur_val_loss = np.mean(templosses,axis=0)
         if cur_val_loss[0] <= np.min(val_loss,axis=0)[0]:
             tqdm.write('Valdiation loss decreased to {:.02e}'.format(cur_val_loss[0]))
-        GenModel.save(model_filepath,True,False)
-        tqdm.write("Saved model to file")
+            GenModel.save(model_filepath,True,False)
+            tqdm.write("Saved model to file")
+        else:
+            tqdm.write('Validation loss did not decrease: {:.02e}'.format(cur_val_loss[0]))
             
         val_loss[vv] = cur_val_loss           
         vv +=1
