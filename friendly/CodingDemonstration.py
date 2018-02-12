@@ -268,7 +268,10 @@ model2.add(Conv2D(20, kernel_size=(4,4),
                  activation='relu'))
 model2.add(Conv2D(30, kernel_size=(3,3),
                   activation='relu'))
-# Now it's time to 'go back up': regain that lost spatial resolution
+# This ends the "encoding" or "contracting" side of the network.
+# Next, we will regain the lost spatial resolution with the matching
+# "Decoding" or "expanding" side of the network
+
 # Same layers in reverse order- just tranpose convolutions
 model2.add(Conv2DTranspose(30,kernel_size=(3,3),
                            activation='relu'))
@@ -379,46 +382,116 @@ plt.imshow(np.c_[predictions2[0]-1,np.argmax(y_test2[0],axis=2)-1],cmap='gray')
 
 #%% Build a segmentation model with skip connections
 
-
+# The functional model is just called "Model"
 from keras.models import Model
-from keras.layers import concatenate
-# Transpose convoutions do just the opposite of a regular convolution
-# So we will use these layers to regain the spatial resolution we need 
-# for pixel-wise classification
 
-# With that in mind, let's build our segmentation model!
-# We'll start the same way:
-model2 = Sequential()
-# Fewer kernels this time since our model needs to be bigger
-model2.add(Conv2D(10, kernel_size=(3, 3),
-                 activation='relu',
-                 input_shape=input_shape2))
-model2.add(Conv2D(20, kernel_size=(3,3),
-                  activation='relu'))
-# Here's our strided downsampling layer
-# We use a 4x4 kernel so that the image sizing
-# works out in the end
-model2.add(Conv2D(20, kernel_size=(4,4),
+# Some other layers we will need for this model
+from keras.layers import Input, concatenate
+
+# Creating a model in this way takes 2 arguments:
+# Inputs
+# Outputs
+# So, we follow a process like this:
+# -Define our input layer(s)
+# -Create the rest of our network connected to those inputs
+# -When we get to our final output layer(s), provide those
+#   and the input(s) to "Model", and the result will be our
+#   functional model!
+
+# Our first layer will be an "Input layer", which is where
+# we define the input shape we will be providing during training
+
+inp = Input(shape=input_shape2)
+
+# Right now, 'inp' defines our input layer. In the 
+# next step, we will provide 'inp' as an argument to our
+# next layer, which will then be called 'x1'. These variables
+# don't matter too much. What matters is connecting the layers
+# together in the proper order.
+# Adding our first convolutional layer looks like this:
+x1 = Conv2D(10,kernel_size=(3,3),activation='relu')(inp)
+# Notice that we don't need to define the input shape for this
+# layer, since we just did that in the Input layer.
+
+# Let's build the rest of the encoding side of the network
+x2 = Conv2D(20, kernel_size=(3,3),
+                  activation='relu')(x1)
+# Use kernel size of (2,2) to make matching up layers easier later
+x3 = Conv2D(20, kernel_size=(2,2),
                  strides=(2,2),
-                 activation='relu'))
-model2.add(Conv2D(30, kernel_size=(3,3),
-                  activation='relu'))
-# Now it's time to 'go back up': regain that lost spatial resolution
-# Same layers in reverse order- just tranpose convolutions
-model2.add(Conv2DTranspose(30,kernel_size=(3,3),
-                           activation='relu'))
-model2.add(Conv2DTranspose(30,kernel_size=(3,3),
+                 activation='relu')(x2)
+x4 = Conv2D(30, kernel_size=(3,3),
+                  activation='relu')(x3)
+
+# Now for the decoding side of the network, we will put the
+# functional API to use by including skip connections
+# The first layer is the same as usual. I'll add
+# a 'd' for 'decoding'
+x3d = Conv2DTranspose(30,kernel_size=(3,3),
+                           activation='relu')(x4)
+# Concatenate corresponding layers from the encoding and
+# decoding sides of the network
+# It can be tough to get layers to match up just right in size
+# Playing around with kernel size and strides is usually needed
+# so that concatenation can take place. The x,y spatial dimensions
+# must be the same. Number of channels doesn't matter
+cat = concatenate([x3d,x3])
+# Now continue to add layers for the decoding side of the
+# network, treating this merged layer like any other
+x2d = Conv2DTranspose(30,kernel_size=(2,2),
                           strides=(2,2),
-                          activation='relu'))
-model2.add(Conv2DTranspose(20,kernel_size=(4,4),
-                           activation='relu'))
-# Final layer: use 11 filters to correspond to our 11 classes
-# and use softmax activation
-model2.add(Conv2DTranspose(11,kernel_size=(3,3),
-                           activation='softmax'))
-# Let's print out a summary of the model to make sure it's what we want.
-model2.summary()
-# The final output shape is the size of our image with the correct
-# number of classes, 56x56x11. Perfect!
-# Note: "none" means not fixed. The batch size hasn't been set yet
-# so the first dimension doesn't have a fixed size
+                          activation='relu')(cat)
+cat = concatenate([x2d,x2])
+# Notice that we can overwrite our previously set variable 'cat'
+# without distrupting the network. The layers are still connected
+# in the order we set them
+
+x1d = Conv2DTranspose(20,kernel_size=(3,3),
+                           activation='relu')(cat)
+cat = concatenate([x1d,x1])
+# Final output layer
+out = Conv2DTranspose(11,kernel_size=(3,3),
+                           activation='softmax')(cat)
+# All of our layers and their connections are now defined. This is
+# commonly referred to as a 'graph', where the layers are the nodes
+# and the calculations from layers to layers are the edges.
+# You can think of the information 'flowing' from the inputs to the outputs.
+# Additionally, the information is stored as tensors, which are not defined
+# arrays but rather placeholders for whichever data we feed in. Notice how
+# we don't give our model any real data until the training begins?
+# Now you know how "TensorFlow" got its name!
+
+# To turn our graph into a real Keras model that we can use, simply call
+# the 'Model' function we loaded
+func_model = Model(inp,out)
+
+# We can print out a summary of the model to make sure it's what we want.
+# It's a little bit harder to keep track of layers in non-sequential
+# format, but it's still a good way to make sure things look right.
+func_model.summary()
+
+# Now, everything else is just like the previous segmentation model
+# Let's try it out and see how it works!
+func_model.compile(loss=keras.losses.categorical_crossentropy,
+              optimizer=keras.optimizers.Adam())
+func_model.fit(x_train2, y_train2,
+          batch_size=batch_size2,
+          epochs=epochs2,
+          verbose=1,
+          validation_data=(x_test2, y_test2))
+
+predictionsF = model2.predict_classes(x_test2[:2])
+fig6= plt.figure(6)
+plt.imshow(np.c_[predictionsF[0]-1,np.argmax(y_test2[0],axis=2)-1],cmap='gray')
+
+# Well.... ok. It's about the same.
+# However! In the long run (more than 2 epochs), having these skip connections
+# will definitely make a difference. The difference becomes more pronounced
+# for deeper networks (more layers) with more parameters and larger images.
+
+# Now that you know the functional API, you can make any graph you like, train
+# it, and use it! Once you've mastered the syntax and conceptual understanding
+# of how to connect layers, you are only limited by your imagination as far
+# as what kind of network you can build.
+
+# Best of luck, and happy deep learning!
