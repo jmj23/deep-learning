@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed May 31 14:06:34 2017
+Created on Mon Feb 12
 
-@author: JMJ136
+@author: Jacob Johnson
 """
 import sys
 import os
+# path to VisTools.py must be added or final test visualizations
+# will not work
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from matplotlib import pyplot as plt
 import numpy as np
 import h5py
 import time
+# for progress bar
 from tqdm import tqdm, trange
 
 # Use first available GPU
@@ -20,9 +23,9 @@ if not 'DEVICE_ID' in locals():
     print('Using GPU',DEVICE_ID)
 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
+# seeding for batches
 np.random.seed(seed=1)
 
-#%%
 # Model Save Path/name
 model_filepath = 'LowDosePET_pix2pixModel_30s.h5'
 #model_filepath = 'LowDosePET_pix2pixModel_60s.h5'
@@ -31,9 +34,7 @@ model_filepath = 'LowDosePET_pix2pixModel_30s.h5'
 datapath = 'lowdosePETdata_30s.hdf5'
 #datapath = 'lowdosePETdata_60s.hdf5'
 
-MS = 3
-MSoS = 1
-
+# load data if not already loaded
 if not 'x_train' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
@@ -44,13 +45,15 @@ if not 'x_train' in locals():
         x_val = np.array(f.get('val_inputs'))
         y_val = np.array(f.get('val_targets'))
         
+numIter = 1000  # number of batches to train
+L1Weight = 100 # how much to weight L1 loss vs adversarial loss        
 #%% Keras imports and initializations
 # Weights initializations
 # bias are initailized as 0
 import keras.backend as K
 from keras.layers import Input, Cropping2D, Conv2D, concatenate, add, Lambda
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
-from keras.layers import UpSampling2D, Conv3D, Reshape
+from keras.layers import UpSampling2D, Reshape
 from keras.layers.advanced_activations import LeakyReLU, ELU
 from keras.models import Model
 from keras.initializers import RandomNormal
@@ -65,33 +68,32 @@ gamma_init = RandomNormal(1., 0.02) # for batch normalization
 def batchnorm():
     return BatchNormalization(momentum=0.9, axis=-1, epsilon=1.01e-5,
                                    gamma_initializer = gamma_init)
-
+# currently no BN is working better than with BN
 use_bn = False
 
 #%% Generator Model
 def GeneratorModel(input_shape):
     lay_input = Input(shape=input_shape,name='input_layer')
     
+    # adjust this if using different image size than 256x256
     padamt = 1
-    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(lay_input)
-    if use_bn:
-        bn = batchnorm()(MSconv, training=1)
-        MSact = ELU(name='MSelu')(bn)
-    else:
-        MSact = ELU(name='MSelu')(MSconv)
-    MSconvRS = Reshape((254,254,16))(MSact)
-
+    lay_crop = Cropping2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(lay_input)
+    
+    # filter multiplier to use
     filtnum = 20
+    # number of "blocks" to use
+    numB = 3
+    
     # contracting block 1
     rr = 1
     x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(MSconvRS)
+                       name='Conv1_{}'.format(rr))(lay_crop)
     x1 = ELU(name='elu{}_1'.format(rr))(x1)
     x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(MSconvRS)
+                       name='Conv3_{}'.format(rr))(lay_crop)
     x3 = ELU(name='elu{}_3'.format(rr))(x3)
     x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(MSconvRS)
+                       name='Conv51_{}'.format(rr))(lay_crop)
     x51 = ELU(name='elu{}_51'.format(rr))(x51)
     x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
                        name='Conv52_{}'.format(rr))(x51)
@@ -107,8 +109,8 @@ def GeneratorModel(input_shape):
     x = ELU(name='elu{}_stride'.format(rr))(x)
     act_list = [x]
     
-    # contracting blocks 2-3
-    for rr in range(2,4):
+    # contracting blocks 2-numB
+    for rr in range(2,numB+1):
         x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
                        name='Conv1_{}'.format(rr))(x)
         x1 = ELU(name='elu{}_1'.format(rr))(x1)
@@ -213,13 +215,9 @@ from keras.layers import Flatten, Dense#, Activation
 
 def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     # Conditional Inputs
-    lay_cond_input = Input(shape=input_shape,name='conditional_input')
-    
-    MSconv = Conv3D(8,(3,3,3),padding='valid',name='MSconv')(lay_cond_input)
-    MSact = LeakyReLU(name='MSleaky')(MSconv)
-    MSconvRS = Reshape((254,254,8))(MSact)    
+    lay_cond_input = Input(shape=input_shape,name='conditional_input') 
     xcond = Conv2D(filtnum,(3,3),padding='same',strides=(1,1),kernel_initializer=conv_initD,
-                       name='FirstCondLayer')(MSconvRS)
+                       name='FirstCondLayer')(lay_cond_input)
     xcond = LeakyReLU(alpha=0.2,name='leaky_cond')(xcond)
     
     
@@ -304,7 +302,9 @@ lrG = 2e-4
 λ = 10  # grad penalty weighting
 
 # create models
+# takes filter multiplier as 3rd argument
 DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],8)
+
 GenModel = GeneratorModel(x_train.shape[1:])
 
 # get tensors of inputs and outputs
@@ -331,41 +331,9 @@ training_updates = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel.tra
 netD_train = K.function([real_A, real_B, ep_input],[loss_D], training_updates)
 evalDloss = K.function([real_A,real_B,ep_input],[loss_D])
 
-# weighted L1 loss tensors and masks
-y_true = K.flatten(real_B)
-y_pred = K.flatten(fake_B)
-
-tis_mask1 = K.cast( K.greater( y_true, 0.01 ), 'float32' )
-tis_mask2 = K.cast( K.less( y_true, 0.3 ), 'float32' )
-tis_mask = tis_mask1 * tis_mask2
-les_mask1 =  K.cast( K.greater(y_true,0.3), 'float32' )
-les_mask2 = K.cast( K.less(y_true,0.5), 'float32' )
-les_mask = les_mask1 * les_mask2
-les_maskB = K.cast (K.greater(y_true,.5), 'float32' )
-air_mask =  K.cast( K.less( y_true, 0.01 ), 'float32' )
-
-tis_true = tis_mask * y_true
-tis_pred = tis_mask * y_pred
-
-air_true = air_mask * y_true
-air_pred = air_mask * y_pred
-
-les_true = les_mask * y_true
-les_pred = les_mask * y_pred
-
-lesB_true = les_maskB * y_true
-lesB_pred = les_maskB * y_pred
-
-tis_loss = K.mean(K.abs(tis_true - tis_pred), axis=-1)
-air_loss = K.mean(K.abs(air_true - air_pred), axis=-1)
-les_loss = K.mean(K.abs(les_true - les_pred), axis=-1)
-lesB_loss = K.mean(K.abs(lesB_true - lesB_pred), axis=-1)
-# weighted L1 loss
-loss_L1w = .05*air_loss + .15*tis_loss + .6 * les_loss + .2 * lesB_loss
-
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 100 * loss_L1w
+loss_G = -loss_D_fake + L1Weight * loss_L1
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
 netG_train = K.function([real_A, real_B], [loss_G, loss_L1], training_updates)
 
@@ -373,38 +341,23 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 
 #%% training
 print('Starting training...')
-ex_ind = 50
-numIter = 10000
-progstep = 100
-valstep = 100
-b_s = 8
-val_b_s = 8
-train_rat = 5
+
+valstep = 100   # how many iterations between validation checks
+b_s = 8         # training batch size
+val_b_s = 8     # validation batch size
+train_rat = 5   # ratio between D and G training. Smaller is faster but
+                # potentially lower quality
+                
+# preallocation of loss vectors for plotting
 dis_loss = np.zeros((numIter))
 gen_loss = np.zeros((numIter,2))
 val_loss = np.ones((np.int(numIter/valstep),2))
 templosses = np.zeros((np.int(x_val.shape[0]/val_b_s),2))
 
-# Updatable plot
-plt.ion()
-fig, ax = plt.subplots()
-cond_samp = x_test[ex_ind,...][np.newaxis,...]
-simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
-fulldose_im = y_test[ex_ind,...,0]
-samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
-ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
-ax.set_axis_off()
-ax.set_clip_box([0,1])
-plt.pause(.001)
-plt.draw()
-
-
 print('Training adversarial model')
-# preallocate image display
-progress_ims = np.zeros((np.int(numIter/progstep),256,3*256))
-gg = 0
+# counter for validation
 vv = 0
-
+# master counter, used in progress bar
 t = trange(numIter,file=sys.stdout)
 for ii in t:
     for _ in range(train_rat):
@@ -416,20 +369,14 @@ for ii in t:
         # train discrimator
         ϵ = np.random.uniform(size=(b_s, 1, 1 ,1))
         errD  = netD_train([cond_batch, real_batch, ϵ])
+    # record discriminator loss
     dis_loss[ii] = errD[0]
     # Train Generator
     errG = netG_train([cond_batch, real_batch])
+    # record generator loss
     gen_loss[ii] = errG
-    if ii % progstep == 0:
-        cond_samp = x_test[ex_ind,...][np.newaxis,...]
-        simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
-        fulldose_im = y_test[ex_ind,...,0]
-        samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
-        progress_ims[gg] = samp_im
-        ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
-        plt.pause(.001)
-        plt.draw()
-        gg += 1
+    # validation checks
+    # currently set to use L1 loss as validation
     if (ii+1) % valstep ==0:
         tqdm.write('Checking validation loss...')
         for bb in range(0,templosses.shape[0]):
@@ -450,21 +397,22 @@ for ii in t:
             
         val_loss[vv] = cur_val_loss           
         vv +=1
-        
+    # updating progress bar
     t.set_postfix(Dloss=dis_loss[ii], Gloss=gen_loss[ii,0], L1loss = gen_loss[ii,1])
-    
+# destroy progress bar after done training
 t.close()
 del t
 
 print('Training complete')
-
+# save a backup copy of model, just in case
+# validation checkpointing has issues loading
 model_json = GenModel.to_json()
 with open("BackupModel.json", "w") as json_file:
     json_file.write(model_json)
 GenModel.save_weights("BackupModel.h5")
 print('Backup Model saved')
 
-# display loss
+# display loss plots
 from scipy.signal import medfilt
 fig5 = plt.figure(5)
 plt.plot(np.arange(numIter),-medfilt(dis_loss,5),
@@ -510,6 +458,4 @@ print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3)
 
 # Display some samples
 from VisTools import multi_slice_viewer0
-if 'progress_ims' in locals():
-    multi_slice_viewer0(progress_ims,'Training Progress Images')
 multi_slice_viewer0(np.c_[x_test[:,1,...,0],test_output[...,0],y_test[...,0]],'Test Images',SSIMs)
