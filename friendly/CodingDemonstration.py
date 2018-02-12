@@ -343,6 +343,82 @@ plt.imshow(np.c_[predictions2[0]-1,np.argmax(y_test2[0],axis=2)-1],cmap='gray')
 
 # Happy (deep) learning!
 
+#%% Part 3: Functional API
+# So far, we've been what's called the 'Sequential' API
+# (Application Programming Interface), which is OK for
+# simple models. Basically, it means that our network
+# has a single, straight path, ie 
+# input -> convolution -> activation -> convolution -> output
+# Each layer has a single input and output
+#
+# But what if we wanted something more complicated? What if
+# we had two different inputs, for example? Then we would want
+# something like
+# input1 --> concatenate -> convolution -> ...
+# input2 ----^
+# Or maybe, what I mentioned as an alteration to the segmentation
+# network:
+# input -> conv1 -> conv2 -> deconv1 -> concatenate -> deconv2 -> output
+#               `----------------------^
+# The extra connection shown is called a skip connection.
+# Skip connections allow the model to consider features that were calculated
+# earlier in the network again, merged with further processed features
+# in practice, this has shown to be hugely helpful in geting precise
+# localization in segmentation outputs
+# To make networks with this more complicated structure, we can't use
+# the Sequential API. We need the Functional API.
+
+# There are many, many reasons to want to use the functional API
+# However, we will focus on the segmentation application as before,
+# and show how a simple tweak in the functional API will give us
+# significantly better results.
+
+# We'll use the same segmentation data so no need to prepare anything new.
+# Let's jump into model creation.
 
 
+#%% Build a segmentation model with skip connections
 
+
+from keras.models import Model
+from keras.layers import concatenate
+# Transpose convoutions do just the opposite of a regular convolution
+# So we will use these layers to regain the spatial resolution we need 
+# for pixel-wise classification
+
+# With that in mind, let's build our segmentation model!
+# We'll start the same way:
+model2 = Sequential()
+# Fewer kernels this time since our model needs to be bigger
+model2.add(Conv2D(10, kernel_size=(3, 3),
+                 activation='relu',
+                 input_shape=input_shape2))
+model2.add(Conv2D(20, kernel_size=(3,3),
+                  activation='relu'))
+# Here's our strided downsampling layer
+# We use a 4x4 kernel so that the image sizing
+# works out in the end
+model2.add(Conv2D(20, kernel_size=(4,4),
+                 strides=(2,2),
+                 activation='relu'))
+model2.add(Conv2D(30, kernel_size=(3,3),
+                  activation='relu'))
+# Now it's time to 'go back up': regain that lost spatial resolution
+# Same layers in reverse order- just tranpose convolutions
+model2.add(Conv2DTranspose(30,kernel_size=(3,3),
+                           activation='relu'))
+model2.add(Conv2DTranspose(30,kernel_size=(3,3),
+                          strides=(2,2),
+                          activation='relu'))
+model2.add(Conv2DTranspose(20,kernel_size=(4,4),
+                           activation='relu'))
+# Final layer: use 11 filters to correspond to our 11 classes
+# and use softmax activation
+model2.add(Conv2DTranspose(11,kernel_size=(3,3),
+                           activation='softmax'))
+# Let's print out a summary of the model to make sure it's what we want.
+model2.summary()
+# The final output shape is the size of our image with the correct
+# number of classes, 56x56x11. Perfect!
+# Note: "none" means not fixed. The batch size hasn't been set yet
+# so the first dimension doesn't have a fixed size
