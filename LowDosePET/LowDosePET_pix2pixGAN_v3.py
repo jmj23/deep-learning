@@ -17,6 +17,7 @@ from tqdm import tqdm, trange
 import GPUtil
 if not 'DEVICE_ID' in locals():
     DEVICE_ID = GPUtil.getFirstAvailable()[0]
+    print('Using GPU',DEVICE_ID)
 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
 np.random.seed(seed=1)
@@ -199,7 +200,7 @@ def GeneratorModel(input_shape):
         x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
     
     # regressor    
-    x = ZeroPadding2D(padding=((0,2*padamt), (0,2*padamt)), data_format=None)(x)
+    x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
     x = Conv2D(1,(1,1), activation='linear',kernel_initializer=conv_initG,
                        name='regression')(x)
     in0 = Lambda(lambda x : x[:,1,...,0],name='channel_split')(lay_input)
@@ -364,7 +365,7 @@ loss_L1w = .05*air_loss + .15*tis_loss + .6 * les_loss + .2 * lesB_loss
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 30 * loss_L1w
+loss_G = -loss_D_fake + 100 * loss_L1w
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
 netG_train = K.function([real_A, real_B], [loss_G, loss_L1], training_updates)
 
