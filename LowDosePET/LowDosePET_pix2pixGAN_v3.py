@@ -513,3 +513,9 @@ from VisTools import multi_slice_viewer0
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
 multi_slice_viewer0(np.c_[x_test[:,1,...,0],test_output[...,0],y_test[...,0]],'Test Images',SSIMs)
+
+#Export to NIFTI
+#import nibabel as nib
+#testsubj1 = np.rollaxis(np.rollaxis(test_output[:85,...,0],2,0),2,0)
+#output_img = nib.Nifti1Image(testsubj1, np.eye(4))
+#output_img.to_filename('subj014_simFullDosePET_30s.nii')
