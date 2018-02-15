@@ -65,11 +65,12 @@ use_bn = False
 def GeneratorModel(input_shape, output_chan):
     lay_input = Input(shape=input_shape,name='input_layer')
     
-    numB=3
+    numB=4
+    noStride = 2
     padamt = 1
     lay_crop = Cropping2D(((padamt,padamt),(padamt,padamt)))(lay_input)
 
-    filtnum = 20
+    filtnum = 16
     # contracting block 1
     rr = 1
     x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
@@ -115,12 +116,16 @@ def GeneratorModel(input_shape, output_chan):
         if use_bn:
             x = batchnorm()(x, training=1)
         x = ELU(name='elu{}_all'.format(rr))(x)
-        x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
+        if rr > noStride:
+            x = Conv2D(filtnum*rr,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initG,
+                       name='ConvNoStride_{}'.format(rr))(x)
+        else:
+            x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
                        name='ConvStride_{}'.format(rr))(x)
         x = ELU(name='elu{}_stride'.format(rr))(x)
         act_list.append(x)
     
-    # expanding block 3
+    # expanding block numB
     dd=numB
     x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
                        name='DeConv1_{}'.format(dd))(x)
@@ -137,20 +142,35 @@ def GeneratorModel(input_shape, output_chan):
     x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
     x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu{}d_all'.format(dd))(x)    
-    x = UpSampling2D()(x)
-    x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_1'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-    x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_2'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
+    if dd >noStride:
+        if use_bn:
+            x = batchnorm()(x, training=1)
+        x = ELU(name='elu{}d_all'.format(dd))(x)
+        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
+                           use_bias=False,name='cleanup{}_1'.format(dd))(x)
+        if use_bn:
+            x = batchnorm()(x, training=1)
+        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
+        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
+                           use_bias=False,name='cleanup{}_2'.format(dd))(x)
+        if use_bn:
+            x = batchnorm()(x, training=1)
+        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
+    else:
+        if use_bn:
+            x = batchnorm()(x, training=1)
+        x = ELU(name='elu{}d_all'.format(dd))(x)    
+        x = UpSampling2D()(x)
+        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
+                           use_bias=False,name='cleanup{}_1'.format(dd))(x)
+        if use_bn:
+            x = batchnorm()(x, training=1)
+        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
+        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
+                           use_bias=False,name='cleanup{}_2'.format(dd))(x)
+        if use_bn:
+            x = batchnorm()(x, training=1)
+        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
     
     # expanding blocks (numB-1)->1
     expnums = list(range(1,numB))
@@ -172,20 +192,32 @@ def GeneratorModel(input_shape, output_chan):
         x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
         x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
                        use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}d_all'.format(dd))(x)
-        x = UpSampling2D()(x)
-        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_1'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_2'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
+        if dd >noStride:
+            if use_bn:
+                x = batchnorm()(x, training=1)
+            x = ELU(name='elu{}d_all'.format(dd))(x)
+            x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
+                               use_bias=False,name='cleanup{}_1'.format(dd))(x)
+            if use_bn:
+                x = batchnorm()(x, training=1)
+            x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
+            x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
+                               use_bias=False,name='cleanup{}_2'.format(dd))(x)
+            if use_bn:
+                x = batchnorm()(x, training=1)
+            x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
+        else:
+            if use_bn:
+                x = batchnorm()(x, training=1)
+            x = ELU(name='elu{}d_all'.format(dd))(x)    
+            x = UpSampling2D()(x)
+            x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
+                               use_bias=False,name='cleanup{}_1'.format(dd))(x)
+            if use_bn:
+                x = batchnorm()(x, training=1)
+            x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
+            x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
+                               use_bias=False,name='cleanup{}_2'.format(dd))(x)
     
     # regressor    
     x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
@@ -194,25 +226,22 @@ def GeneratorModel(input_shape, output_chan):
     
     return Model(lay_input,lay_out)
 #%% Discriminator model
-from keras.layers import Flatten, Dense#, Activation
+#from keras.layers import Flatten, Dense#, Activation
+from keras.layers import GlobalAveragePooling2D
 
 def DiscriminatorModel(input_shape,filtnum=16):
     # Conditional Inputs
-    lay_cond_input = Input(shape=input_shape,name='conditional_input')
-    
-    xcond = Conv2D(filtnum,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initD,
-                       name='FirstCondLayer')(lay_cond_input)
-    xcond = LeakyReLU(alpha=0.2,name='leaky_cond')(xcond)
+    lay_input = Input(shape=input_shape,name='input')
     
     usebias = False
     # contracting block 1
     rr = 1
     lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv1_{}'.format(rr))(xcond)
+                       use_bias=usebias,name='Conv1_{}'.format(rr))(lay_input)
     lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv3_{}'.format(rr))(xcond)
+                       use_bias=usebias,name='Conv3_{}'.format(rr))(lay_input)
     lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv51_{}'.format(rr))(xcond)
+                       use_bias=usebias,name='Conv51_{}'.format(rr))(lay_input)
     lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
     lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
@@ -225,8 +254,8 @@ def DiscriminatorModel(input_shape,filtnum=16):
     lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
     
     
-    # contracting blocks 2-5
-    for rr in range(2,6):
+    # contracting blocks 2-3
+    for rr in range(2,4):
         lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
         lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
@@ -244,10 +273,14 @@ def DiscriminatorModel(input_shape,filtnum=16):
                        use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
         lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
     
-    lay_flat = Flatten()(lay_act)
-    lay_dense = Dense(1,kernel_initializer=conv_initD,name='Dense1')(lay_flat)
+    lay_one = Conv2D(1,(3,3),kernel_initializer=conv_initD,
+                     use_bias=usebias,name='ConvOne')(lay_act)
+    lay_avg = GlobalAveragePooling2D()(lay_one)
     
-    return Model(lay_cond_input,lay_dense)
+#    lay_flat = Flatten()(lay_act)
+#    lay_dense = Dense(1,kernel_initializer=conv_initD,name='Dense1')(lay_flat)
+    
+    return Model(lay_input,lay_avg)
 
 #%% Setup models for training
 print("Generating models...")
@@ -256,10 +289,11 @@ from keras.optimizers import Adam
 lrD = 2e-4
 lrG = 2e-4
 λ = 10  # grad penalty weighting
+C = 500  # Cycle Loss weighting
 
 # Discriminator models
-DisModel_CT = DiscriminatorModel(train_CT.shape[1:],8)
-DisModel_MR = DiscriminatorModel(train_MR.shape[1:],8)
+DisModel_CT = DiscriminatorModel(train_CT.shape[1:],32)
+DisModel_MR = DiscriminatorModel(train_MR.shape[1:],32)
 # Generator Models
 GenModel_MR2CT = GeneratorModel(train_MR.shape[1:],train_CT.shape[-1])
 GenModel_CT2MR = GeneratorModel(train_CT.shape[1:],train_MR.shape[-1])
@@ -331,7 +365,7 @@ D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(weights_D,[],loss_D)
 fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2],[loss_CT, loss_MR], D_trups)
 
 # Generator Training function
-loss_G = loss_MR2CT + loss_MR2CT2MR + loss_CT2MR + loss_CT2MR2CT
+loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR + C*loss_CT2MR2CT
 weights_G = GenModel_MR2CT.trainable_weights + GenModel_CT2MR.trainable_weights
 MR2CT_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], loss_G)
 # Generator training function returns MR2CT discriminator loss and MR2CT2MR cycle loss
@@ -343,9 +377,9 @@ fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 #%% training
 print('Starting training...')
 ex_ind = 165
-numIter = 5000
-progstep =50
-valstep = 100
+numIter = 20000
+progstep = 20
+valstep = 50
 b_s = 8
 val_b_s = 8
 train_rat = 3
@@ -435,13 +469,13 @@ from scipy.signal import medfilt
 fig5 = plt.figure(5)
 plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],5),
          np.arange(numIter),-medfilt(dis_loss[:,1],5),
-         np.arange(numIter),medfilt(100*gen_loss[:,1],5),
-         np.arange(0,numIter,valstep),100*val_loss[:,0])
+         np.arange(numIter),medfilt(1000*gen_loss[:,1],5),
+         np.arange(0,numIter,valstep),1000*val_loss[:,0])
 plt.legend(['-Discriminator CT Loss',
             '-Discriminator MR Loss',
-            '100x Cycle Loss',
-            '100x Validation Cycle loss'])
-plt.ylim([0,100])
+            '1000x Cycle Loss',
+            '1000x Validation Cycle loss'])
+plt.ylim([0,60])
 plt.show()
 
 #%%
@@ -471,4 +505,24 @@ print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 from VisTools import multi_slice_viewer0
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
-multi_slice_viewer0(np.c_[test_MR[:,...,0],test_output[...,0]],'Test Images')
+    # save progress ims to gif
+    import imageio
+    output_file = 'ProgressIms.gif'
+    gif_ims = np.copy(progress_ims)
+    gif_ims[gif_ims<0] = 0
+    gif_ims[gif_ims>1] = 1
+    gif_ims = (255*gif_ims).astype(np.uint8)
+    images = [gif_ims[ii,...] for ii in range(gif_ims.shape[0])]
+    imageio.mimsave(output_file, images, duration=1/5,loop=1)
+try:
+    testCT = np.zeros((test_MR.shape[:3]))
+    testRec = np.copy(testCT)
+    for bb in range(0,np.int(test_MR.shape[0]/8)):
+            test_inds = np.arange(bb*8,np.minimum((bb+1)*8,test_MR.shape[0]))
+            MR_batch = test_MR[test_inds,...]
+            [test,rec] = fn_genCT([MR_batch])
+            testCT[test_inds] = test[...,0]
+            testRec[test_inds] = rec[...,0]
+    multi_slice_viewer0(np.c_[test_MR[...,0],testCT,testRec],'Test Images')
+except Exception as e:
+    multi_slice_viewer0(np.c_[test_MR[...,0],test_output[...,0]],'Test Images')
