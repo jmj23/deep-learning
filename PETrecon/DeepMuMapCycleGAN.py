@@ -459,10 +459,16 @@ del t
 print('Training complete')
 
 model_json = GenModel_MR2CT.to_json()
-with open("BackupModel.json", "w") as json_file:
+with open("BackupModel_MR2CT.json", "w") as json_file:
     json_file.write(model_json)
-GenModel_MR2CT.save_weights("BackupModel.h5")
-print('Backup Model saved')
+GenModel_MR2CT.save_weights("BackupModel_MR2CT.h5")
+
+model_json = GenModel_CT2MR.to_json()
+with open("BackupModel_CT2MR.json", "w") as json_file:
+    json_file.write(model_json)
+GenModel_CT2MR.save_weights("BackupModel_CT2MR.h5")
+
+print('Backup Models saved')
 
 # display loss
 from scipy.signal import medfilt
@@ -483,14 +489,20 @@ print('Generating samples')
 from keras.models import load_model
 
 #~#~#~#~#~#~#~#~#~#~#~#~#~#
-# Load backup model
+# Load backup models
 # from keras.models import model_from_json
-#json_file = open('model.json', 'r')
+#json_file = open('BackupModel_MR2CT.json', 'r')
 #loaded_model_json = json_file.read()
 #json_file.close()
-#TestModel = model_from_json(loaded_model_json)
-#TestModel.load_weights("model.h5")
-#print("Loaded model from disk")
+#MR2CT_Model = model_from_json(loaded_model_json)
+#MR2CT_Model.load_weights("BackupModel_MR2CT.h5")
+# from keras.models import model_from_json
+#json_file = open('BackupModel_CT2MR.json', 'r')
+#loaded_model_json = json_file.read()
+#json_file.close()
+#CT2MR_Model = model_from_json(loaded_model_json)
+#CT2MR_Model.load_weights("BackupModel_CT2MR.h5")
+#print("Loaded backup models from weights")
 #~#~#~#~#~#~#~#~#~#~#~#~#~#
 
 GenModel = load_model(model_filepath,None,False)
@@ -516,13 +528,13 @@ if 'progress_ims' in locals():
     imageio.mimsave(output_file, images, duration=1/5,loop=1)
 try:
     testCT = np.zeros((test_MR.shape[:3]))
-    testRec = np.copy(testCT)
+    testRec = np.zeros_like(test_MR)
     for bb in range(0,np.int(test_MR.shape[0]/8)):
             test_inds = np.arange(bb*8,np.minimum((bb+1)*8,test_MR.shape[0]))
             MR_batch = test_MR[test_inds,...]
             [test,rec] = fn_genCT([MR_batch])
             testCT[test_inds] = test[...,0]
-            testRec[test_inds] = rec[...,0]
+            testRec[test_inds] = rec
     multi_slice_viewer0(np.c_[test_MR[...,0],testCT,testRec],'Test Images')
 except Exception as e:
     multi_slice_viewer0(np.c_[test_MR[...,0],test_output[...,0]],'Test Images')
