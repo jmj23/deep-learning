@@ -11,7 +11,7 @@ import nibabel as nib
 import os
 import sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-savepath = 'lowdosePETdata_v3.hdf5'
+savepath = 'lowdosePETdata_cycleGAN.hdf5'
 
 train_subj_vec = [3,5,7,8,9,10,11,12,13,15,17]
 val_subj_vec = [2, 16]
