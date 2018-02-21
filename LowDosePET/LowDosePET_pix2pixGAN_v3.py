@@ -330,37 +330,54 @@ training_updates = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel.tra
 netD_train = K.function([real_A, real_B, ep_input],[loss_D], training_updates)
 evalDloss = K.function([real_A,real_B,ep_input],[loss_D])
 
-# weighted L1 loss tensors and masks
+# make weighted loss based on water/fat values
+water_slice = real_A[:,1,:,:,0]
+
 y_true = K.flatten(real_B)
 y_pred = K.flatten(fake_B)
+x_water = K.flatten(water_slice)
 
-tis_mask1 = K.cast( K.greater( y_true, 0.01 ), 'float32' )
-tis_mask2 = K.cast( K.less( y_true, 0.3 ), 'float32' )
-tis_mask = tis_mask1 * tis_mask2
-les_mask1 =  K.cast( K.greater(y_true,0.3), 'float32' )
-les_mask2 = K.cast( K.less(y_true,0.5), 'float32' )
-les_mask = les_mask1 * les_mask2
-les_maskB = K.cast (K.greater(y_true,.5), 'float32' )
-air_mask =  K.cast( K.less( y_true, 0.01 ), 'float32' )
+water_mask = K.cast(K.greater(x_water,0.3),'float32')
+fat_mask = K.cast(K.less(x_water,0.3),'float32')
+water_true = water_mask * y_true
+water_pred = water_mask * y_pred
 
-tis_true = tis_mask * y_true
-tis_pred = tis_mask * y_pred
+fat_true = fat_mask * y_true
+fat_pred = fat_mask * y_pred
 
-air_true = air_mask * y_true
-air_pred = air_mask * y_pred
+water_loss = K.mean(K.abs(water_true - water_pred),axis=-1)
+fat_loss = K.mean(K.abs(fat_true - fat_pred),axis=-1)
+loss_L1w = .9*water_loss + .1*fat_loss
 
-les_true = les_mask * y_true
-les_pred = les_mask * y_pred
+# weighted L1 loss tensors and masks
+#tis_mask1 = K.cast( K.greater( y_true, 0.01 ), 'float32' )
+#tis_mask2 = K.cast( K.less( y_true, 0.3 ), 'float32' )
+#tis_mask = tis_mask1 * tis_mask2
+#les_mask1 =  K.cast( K.greater(y_true,0.3), 'float32' )
+#les_mask2 = K.cast( K.less(y_true,0.5), 'float32' )
+#les_mask = les_mask1 * les_mask2
+#les_maskB = K.cast (K.greater(y_true,.5), 'float32' )
+#air_mask =  K.cast( K.less( y_true, 0.01 ), 'float32' )
+#
+#tis_true = tis_mask * y_true
+#tis_pred = tis_mask * y_pred
+#
+#air_true = air_mask * y_true
+#air_pred = air_mask * y_pred
+#
+#les_true = les_mask * y_true
+#les_pred = les_mask * y_pred
+#
+#lesB_true = les_maskB * y_true
+#lesB_pred = les_maskB * y_pred
+#
+#tis_loss = K.mean(K.abs(tis_true - tis_pred), axis=-1)
+#air_loss = K.mean(K.abs(air_true - air_pred), axis=-1)
+#les_loss = K.mean(K.abs(les_true - les_pred), axis=-1)
+#lesB_loss = K.mean(K.abs(lesB_true - lesB_pred), axis=-1)
+## weighted L1 loss
+#loss_L1w = .05*air_loss + .15*tis_loss + .6 * les_loss + .2 * lesB_loss
 
-lesB_true = les_maskB * y_true
-lesB_pred = les_maskB * y_pred
-
-tis_loss = K.mean(K.abs(tis_true - tis_pred), axis=-1)
-air_loss = K.mean(K.abs(air_true - air_pred), axis=-1)
-les_loss = K.mean(K.abs(les_true - les_pred), axis=-1)
-lesB_loss = K.mean(K.abs(lesB_true - lesB_pred), axis=-1)
-# weighted L1 loss
-loss_L1w = .05*air_loss + .15*tis_loss + .6 * les_loss + .2 * lesB_loss
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
