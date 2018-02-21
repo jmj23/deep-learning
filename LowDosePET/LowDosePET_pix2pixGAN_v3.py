@@ -337,8 +337,8 @@ y_true = K.flatten(real_B)
 y_pred = K.flatten(fake_B)
 x_water = K.flatten(water_slice)
 
-water_mask = K.cast(K.greater(x_water,0.3),'float32')
-fat_mask = K.cast(K.less(x_water,0.3),'float32')
+water_mask = K.cast(K.greater(x_water,0.15),'float32')
+fat_mask = K.cast(K.less(x_water,0.15),'float32')
 water_true = water_mask * y_true
 water_pred = water_mask * y_pred
 
@@ -381,17 +381,17 @@ loss_L1w = .9*water_loss + .1*fat_loss
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 100 * loss_L1w
+loss_G = -loss_D_fake + 500 * loss_L1w
 training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
-netG_train = K.function([real_A, real_B], [loss_G, loss_L1], training_updates)
+netG_train = K.function([real_A, real_B], [loss_L1w, loss_L1], training_updates)
 
 netG_eval = K.function([real_A, real_B],[loss_L1])
 
 #%% training
 print('Starting training...')
-ex_ind = 50
+ex_ind = 122
 numIter = 10000
-progstep = 100
+progstep = 50
 valstep = 100
 b_s = 8
 val_b_s = 8
@@ -407,7 +407,7 @@ fig, ax = plt.subplots()
 cond_samp = x_test[ex_ind,...][np.newaxis,...]
 simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
 fulldose_im = y_test[ex_ind,...,0]
-samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
+samp_im = np.c_[cond_samp[0,1,...,1],cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
 ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
 ax.set_axis_off()
 ax.set_clip_box([0,1])
@@ -417,7 +417,7 @@ plt.draw()
 
 print('Training adversarial model')
 # preallocate image display
-progress_ims = np.zeros((np.int(numIter/progstep),256,3*256))
+progress_ims = np.zeros((np.int(numIter/progstep),256,4*256))
 gg = 0
 vv = 0
 
@@ -440,7 +440,7 @@ for ii in t:
         cond_samp = x_test[ex_ind,...][np.newaxis,...]
         simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
         fulldose_im = y_test[ex_ind,...,0]
-        samp_im = np.c_[cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
+        samp_im = np.c_[cond_samp[0,1,...,1],cond_samp[0,1,...,0],simfulldose_im,fulldose_im]
         progress_ims[gg] = samp_im
         ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
         plt.pause(.001)
@@ -467,7 +467,7 @@ for ii in t:
         val_loss[vv] = cur_val_loss           
         vv +=1
         
-    t.set_postfix(Dloss=dis_loss[ii], Gloss=gen_loss[ii,0], L1loss = gen_loss[ii,1])
+    t.set_postfix(Dloss=dis_loss[ii], L1Wloss=gen_loss[ii,0], L1loss = gen_loss[ii,1])
     
 t.close()
 del t
@@ -527,8 +527,18 @@ print('SSIM range of', np.round(np.min(SSIMs),3), '-', np.round(np.max(SSIMs),3)
 # Display some samples
 from VisTools import multi_slice_viewer0
 if 'progress_ims' in locals():
+    # save progress ims to gif
+    import imageio
+    output_file = 'ProgressIms.gif'
+    gif_ims = np.copy(progress_ims)
+    gif_ims[gif_ims<0] = 0
+    gif_ims[gif_ims>1] = 1
+    gif_ims = (255*gif_ims).astype(np.uint8)
+    images = [gif_ims[ii,...] for ii in range(gif_ims.shape[0])]
+    imageio.mimsave(output_file, images, duration=1/5,loop=1)
+    # display
     multi_slice_viewer0(progress_ims,'Training Progress Images')
-multi_slice_viewer0(np.c_[x_test[:,1,...,0],test_output[...,0],y_test[...,0]],'Test Images',SSIMs)
+multi_slice_viewer0(np.c_[x_test[:,1,...,1],x_test[:,1,...,0],test_output[...,0],y_test[...,0]],'Test Images',SSIMs)
 
 #Export to NIFTI
 #import nibabel as nib
