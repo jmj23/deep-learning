@@ -6,7 +6,7 @@ Created on Wed May 31 14:06:34 2017
 """
 import sys
 import os
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 from matplotlib import pyplot as plt
 import numpy as np
 import h5py
@@ -484,11 +484,11 @@ print('Backup Model saved')
 from scipy.signal import medfilt
 fig5 = plt.figure(5)
 plt.plot(np.arange(numIter),-medfilt(dis_loss,5),
-         np.arange(numIter),medfilt(gen_loss[:,0],5),
+         np.arange(numIter),medfilt(100*gen_loss[:,0],5),
          np.arange(numIter),medfilt(100*gen_loss[:,1],5),
          np.arange(0,numIter,valstep),100*val_loss[:,0])
 plt.legend(['-Discriminator Loss',
-            'Generator Loss',
+            'Weighted L1 Loss',
             '100x L1 loss',
             '100x Validation L1 loss'])
 plt.ylim([0,100])
