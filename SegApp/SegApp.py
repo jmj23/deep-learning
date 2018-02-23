@@ -1,4 +1,5 @@
 import sys
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 from PyQt5 import QtWidgets, QtCore, uic
 from PyQt5.QtCore import pyqtProperty,pyqtSignal, QThread, Qt
 from PyQt5.QtGui import QCursor
@@ -10,7 +11,12 @@ from scipy.ndimage import median_filter
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage.draw import polygon
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+# Use first available GPU
+import GPUtil
+if not 'DEVICE_ID' in locals():
+    DEVICE_ID = GPUtil.getFirstAvailable()[0]
+    print('Using GPU',DEVICE_ID)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 import psutil
 import configparser
 import scipy.io as spio
@@ -392,7 +398,6 @@ class MainApp(QtBaseClass1, Ui_MainWindow):
         self.ui.menubar.setEnabled(True)
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setVisible(False)
-        print('Segmask shape:',self.segmask.shape)
         try:
             self.maskdisp = True
             self.maskOn()
@@ -1009,6 +1014,7 @@ class MainApp(QtBaseClass1, Ui_MainWindow):
             print('Test action')
         elif action == resetAction:
             self.resetView()
+        menu.close()
     def maskOn(self):
         # show mask
         try:
@@ -2355,6 +2361,7 @@ class NiftiImportThread(QThread):
                 # adjust orientation
                 canon_nft = nib.as_closest_canonical(nft)         
                 wims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+                wims = np.flip(wims,axis=1)
                 wims_send = self.noise_elim(wims)
                 self.imagesWsig.emit(wims_send)
             else:
@@ -2368,6 +2375,7 @@ class NiftiImportThread(QThread):
                 canon_nft = nib.as_closest_canonical(nft)
                 
                 fims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+                fims = np.flip(fims,axis=1)
                 fims_send = self.noise_elim(fims)
                 self.imagesFsig.emit(fims_send)
             else:
@@ -2401,17 +2409,21 @@ class ModelLoadThread(QThread):
             # load model
             try:
                 with self.graph.as_default():
-                    model = keras.models.load_model(self.filename,
-                                   custom_objects={'jac_met':jac_met,
-                                                   'dice_coef':dice_coef,
-                                                   'dice_coef_loss':dice_coef_loss})
+                    model = keras.models.load_model(self.filename,None,False)
             except:
-                with self.graph.as_default():
-                    model = keras.models.load_model(self.filename,
-                                   custom_objects={'jac_met':jac_met,
-                                                   'dice_coef':dice_coef,
-                                                   'perc_error':perc_error,
-                                                   'dice_coef_loss':dice_coef_loss})
+                try:
+                    with self.graph.as_default():
+                        model = keras.models.load_model(self.filename,
+                                       custom_objects={'jac_met':jac_met,
+                                                       'dice_coef':dice_coef,
+                                                       'dice_coef_loss':dice_coef_loss})
+                except:
+                    with self.graph.as_default():
+                        model = keras.models.load_model(self.filename,
+                                       custom_objects={'jac_met':jac_met,
+                                                       'dice_coef':dice_coef,
+                                                       'perc_error':perc_error,
+                                                       'dice_coef_loss':dice_coef_loss})
             self.model_sig.emit(model)
         except Exception as e:
             print(e)

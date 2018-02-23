@@ -15,8 +15,9 @@ added_files = [
 		 ('SampleDataset.mat','.')
          ]
 
-a = Analysis(['PyQtApp.py'],
-             pathex=['C:\\Users\\jmj136\\Keras Scripts'],
+a = Analysis(['SegApp.py'],
+             pathex=['~/deep-learning/SegApp',
+                    '~/deep-learning/Utils'],
              binaries=[],
              datas=added_files,
              hiddenimports=["CustomMetrics","VisTools","OverlapMetrics","h5py","h5py.defs","h5py.utils","h5py._proxy","h5py.h5ac"],
@@ -31,7 +32,7 @@ pyz = PYZ(a.pure, a.zipped_data,
 exe = EXE(pyz,
           a.scripts,
           exclude_binaries=True,
-          name='PDWFnet',
+          name='SegApp',
           debug=True,
           strip=False,
           upx=True,
@@ -42,4 +43,4 @@ coll = COLLECT(exe,
                a.datas,
                strip=False,
                upx=True,
-               name='PDWFnet')
+               name='SegApp')
