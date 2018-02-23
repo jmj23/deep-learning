@@ -6,7 +6,7 @@ Created on Wed May 31 14:06:34 2017
 """
 import sys
 import os
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 from matplotlib import pyplot as plt
 import numpy as np
 import h5py
@@ -286,8 +286,8 @@ def DiscriminatorModel(input_shape,filtnum=16):
 print("Generating models...")
 from keras.optimizers import Adam
 # set learning rates and parameters
-lrD = 2e-4
-lrG = 2e-4
+lrD = 1e-4
+lrG = 1e-4
 λ = 10  # grad penalty weighting
 C = 500  # Cycle Loss weighting
 
