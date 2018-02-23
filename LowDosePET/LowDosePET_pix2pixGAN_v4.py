@@ -47,9 +47,9 @@ if not 'x_train' in locals():
 # Weights initializations
 # bias are initailized as 0
 import keras.backend as K
-from keras.layers import Input, Cropping2D, Conv2D, concatenate, add, Lambda
+from keras.layers import Input, Conv2D, concatenate, add, Lambda#, Cropping2D
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
-from keras.layers import UpSampling2D, Conv3D, Reshape
+from keras.layers import UpSampling2D, Conv3D, ZeroPadding3D, Reshape
 from keras.layers.advanced_activations import LeakyReLU, ELU
 from keras.models import Model
 from keras.initializers import RandomNormal
@@ -68,7 +68,7 @@ def batchnorm():
 use_bn = False
 
 #%% Generator Model
-def GeneratorModel(input_shape):
+def GeneratorModel_old(input_shape):
     lay_input = Input(shape=input_shape,name='input_layer')
     
     padamt = 1
@@ -207,6 +207,68 @@ def GeneratorModel(input_shape):
     lay_res = add([in0,x],name='residual')
     
     return Model(lay_input,lay_res)
+#%% Generator Model
+def GeneratorModel(input_shape):
+    # Input layer
+    lay_input = Input(shape=input_shape,name='input_layer')
+    # extract PET image channel from center slice
+    res = Lambda(lambda x : x[:,1,...,0],name='channel_split')(lay_input)
+    res = Reshape([256,256,1])(res)
+    
+    # Pad input before 3D conv to get right output shape
+    padamt = 1
+    zp = ZeroPadding3D(padding=((0,0),(padamt,padamt),(padamt,padamt)),data_format=None)(lay_input)
+    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(zp)
+    if use_bn:
+        bn = batchnorm()(MSconv, training=1)
+        MSact = ELU(name='MSelu')(bn)
+    else:
+        MSact = ELU(name='MSelu')(MSconv)
+    x = Reshape((256,256,16))(MSact)
+
+    filtnum = 16
+    
+    numBlocks = 4
+    
+    # block 1
+    rr = 1
+    x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
+                           name='Conv1_{}'.format(rr))(x)
+    x1 = ELU(name='elu{}_1'.format(rr))(x1)
+    x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv3_{}'.format(rr))(x)
+    x3 = ELU(name='elu{}_3'.format(rr))(x3)
+    x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv51_{}'.format(rr))(x)
+    x51 = ELU(name='elu{}_51'.format(rr))(x51)
+    x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv52_{}'.format(rr))(x51)
+    x52 = ELU(name='elu{}_52'.format(rr))(x52)
+    lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
+    x = Conv2D(1,(1,1),padding='valid',kernel_initializer=conv_initG,
+                       use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
+    res = add([res,x])
+    
+    # rest of blocks
+    for rr in range(2,numBlocks+1):
+        x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
+                           name='Conv1_{}'.format(rr))(res)
+        x1 = ELU(name='elu{}_1'.format(rr))(x1)
+        x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+                           name='Conv3_{}'.format(rr))(res)
+        x3 = ELU(name='elu{}_3'.format(rr))(x3)
+        x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+                           name='Conv51_{}'.format(rr))(res)
+        x51 = ELU(name='elu{}_51'.format(rr))(x51)
+        x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
+                           name='Conv52_{}'.format(rr))(x51)
+        x52 = ELU(name='elu{}_52'.format(rr))(x52)
+        lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
+        x = Conv2D(1,(1,1),padding='valid',kernel_initializer=conv_initG,
+                           use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
+        res = add([res,x])
+    
+    return Model(lay_input,res)
 #%% Discriminator model
 from keras.layers import Flatten, Dense#, Activation
 
@@ -298,8 +360,8 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
 print("Generating models...")
 from keras.optimizers import Adam
 # set learning rates and parameters
-lrD = 2e-4
-lrG = 2e-4
+lrD = 1e-4
+lrG = 1e-4
 λ = 10  # grad penalty weighting
 
 # create models
@@ -390,7 +452,7 @@ netG_eval = K.function([real_A, real_B],[loss_L1])
 #%% training
 print('Starting training...')
 ex_ind = 122
-numIter = 10000
+numIter = 5000
 progstep = 50
 valstep = 100
 b_s = 8
@@ -474,11 +536,11 @@ del t
 
 print('Training complete')
 
-model_json = GenModel.to_json()
-with open("BackupModel.json", "w") as json_file:
-    json_file.write(model_json)
-GenModel.save_weights("BackupModel.h5")
-print('Backup Model saved')
+#model_json = GenModel.to_json()
+#with open("BackupModel.json", "w") as json_file:
+#    json_file.write(model_json)
+#GenModel.save_weights("BackupModel.h5")
+#print('Backup Model saved')
 
 # display loss
 from scipy.signal import medfilt
