@@ -9,7 +9,6 @@ import numpy as np
 import skimage.exposure as skexp
 from scipy.ndimage import morphology as scimorph
 from skimage import measure as skmeasure
-import os
 import sys
 sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 import ants
@@ -36,7 +35,7 @@ fims = np.rollaxis(ants.image_read(datapath.format(subj,'FAT')).numpy(),2,0)
 inims = np.rollaxis(ants.image_read(datapath.format(subj,'InPhase')).numpy(),2,0)
 outims = np.rollaxis(ants.image_read(datapath.format(subj,'OutPhase')).numpy(),2,0)
 #nacims = np.rollaxis(ants.image_read(datapath.format(subj,'NAC')).numpy(),2,0)
-good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
+good_inds = np.loadtxt('/home/jmj136/deep-learning/PETrecon/RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
 for im in wims:
     im[im<0]=0
     im /= np.max(im)
@@ -49,10 +48,7 @@ for im in inims:
 for im in outims:
     im[im<0]=0
     im /= (np.max(im)+eps)
-#for im in nacims:
-#    im[im<0]=0
-#    im[im>1500] = 1500
-#    im /= 1500
+
 inputarray = np.stack((wims,fims,inims,outims),axis=3)
 inputs = inputarray[good_inds]
 
@@ -64,7 +60,7 @@ for subj in subj_vec[1:]:
     fims = np.rollaxis(ants.image_read(datapath.format(subj,'FAT')).numpy(),2,0)
     inims = np.rollaxis(ants.image_read(datapath.format(subj,'InPhase')).numpy(),2,0)
     outims = np.rollaxis(ants.image_read(datapath.format(subj,'OutPhase')).numpy(),2,0)
-    good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
+    good_inds = np.loadtxt('/home/jmj136/deep-learning/PETrecon/RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
     for im in wims:
         im[im<0]=0
         im /= np.max(im)
@@ -77,10 +73,7 @@ for subj in subj_vec[1:]:
     for im in outims:
         im[im<0]=0
         im /= (np.max(im)+eps)
-#    for im in nacims:
-#        im[im<0]=0
-#        im[im>1500] = 1500
-#        im /= 1500
+        
     inputarray = np.stack((wims,fims,inims,outims),axis=3)
     new_inputs = inputarray[good_inds]
     inputs = np.concatenate((inputs,new_inputs),axis=0)
@@ -102,9 +95,9 @@ def MakeCTLabels(CTims):
         soft_tis[ii,...] = scimorph.binary_fill_holes(soft_tis[ii,...])
         
     water_tis = np.copy(soft_tis)
-    water_tis[CTims<0] = 0
+    water_tis[CTims<-75] = 0
     fat_tis = np.copy(soft_tis)
-    fat_tis[CTims>=0] = 0
+    fat_tis[CTims>=-75] = 0
     
     lung_seg = np.zeros(CTims.shape,dtype=np.bool)
     lung_tis = lung_seg
@@ -136,7 +129,7 @@ def MakeCTLabels(CTims):
     
     tis_classes = np.copy(CTims).astype(np.int)
     tis_classes *= 0
-    tis_classes[soft_tis] = 2 # fat tissue label
+    tis_classes[fat_tis] = 2 # fat tissue label
     tis_classes[water_tis] = 3 # water tissue label
     tis_classes[lung_tis] = 1 # lung tissue label
     tis_classes[bone_tis] = 4 # bone tissue label
@@ -150,7 +143,7 @@ print('Loading targets')
 
 subj = subj_vec[0]
 CTims = np.rollaxis(ants.image_read(datapath.format(subj,'CTAC')).numpy(),2,0)
-good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
+good_inds = np.loadtxt('/home/jmj136/deep-learning/PETrecon/RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
 CTims = CTims[good_inds]
 
 # convert HU to LAC
@@ -162,7 +155,7 @@ class_targets = MakeCTLabels(CTims)
 for subj in subj_vec[1:]:
     print('Loading subject',subj)
     CTims = np.rollaxis(ants.image_read(datapath.format(subj,'CTAC')).numpy(),2,0)
-    good_inds = np.loadtxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
+    good_inds = np.loadtxt('/home/jmj136/deep-learning/PETrecon/RegNIFTIs/subj{:03d}_indices.txt'.format(subj)).astype(np.int)
     CTims = CTims[good_inds]
     muMap = ConvertToLAC(CTims)
     new_reg_targets = muMap[...,np.newaxis]
@@ -199,23 +192,13 @@ class_targets = np.delete(class_targets,remove_inds,axis=0)
 
 # store validation and testing data to HDF5 file
 print('Storing validation and testing data as HDF5...')
-try:
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("val_inputs",  data=val_inputs,dtype='f')
-        hf.create_dataset("test_inputs", data=test_inputs,dtype='f')
-        hf.create_dataset("val_reg_targets",  data=val_reg_targets,dtype='f')
-        hf.create_dataset("test_reg_targets",  data=test_reg_targets,dtype='f')
-        hf.create_dataset("val_class_targets",  data=val_class_targets,dtype='f')
-        hf.create_dataset("test_class_targets",  data=test_class_targets,dtype='f')
-except Exception as e:
-    os.remove(savepath)
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("val_inputs",  data=val_inputs,dtype='f')
-        hf.create_dataset("test_inputs", data=test_inputs,dtype='f')
-        hf.create_dataset("val_reg_targets",  data=val_reg_targets,dtype='f')
-        hf.create_dataset("test_reg_targets",  data=test_reg_targets,dtype='f')
-        hf.create_dataset("val_class_targets",  data=val_class_targets,dtype='f')
-        hf.create_dataset("test_class_targets",  data=test_class_targets,dtype='f')
+with h5py.File(savepath, 'w') as hf:
+    hf.create_dataset("MR_val",  data=val_inputs,dtype='f')
+    hf.create_dataset("MR_test", data=test_inputs,dtype='f')
+    hf.create_dataset("CT_val_con",  data=val_reg_targets,dtype='f')
+    hf.create_dataset("CT_test_con",  data=test_reg_targets,dtype='f')
+    hf.create_dataset("CT_val_dis",  data=val_class_targets,dtype='f')
+    hf.create_dataset("CT_test_dis",  data=test_class_targets,dtype='f')
 
 #%% augment training data
 print('Augmenting training data...')
@@ -242,21 +225,12 @@ aug_class_targets = np.concatenate((class_targets,fl_class_targets,gm_class_targ
 
 #%% finalize training data
 
-# randomize inputs
-#print('Randomizing training inputs...')
-#numS = aug_inputs.shape[0]
-#sort_r = np.random.permutation(numS)
-#np.take(aug_inputs,sort_r,axis=0,out=aug_inputs)
-#np.take(aug_reg_targets,sort_r,axis=0,out=aug_reg_targets)
-#np.take(aug_class_targets,sort_r,axis=0,out=aug_class_targets)
-
-
 # store training data
 print('Storing train data as HDF5...')
 with h5py.File(savepath, 'a') as hf:
-    hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-    hf.create_dataset("train_reg_targets",  data=aug_reg_targets,dtype='f')
-    hf.create_dataset("train_class_targets",  data=aug_class_targets,dtype='f')
+    hf.create_dataset("MR_train",  data=aug_inputs,dtype='f')
+    hf.create_dataset("CT_train_con",  data=aug_reg_targets,dtype='f')
+    hf.create_dataset("CT_train_dis",  data=aug_class_targets,dtype='f')
     
 print('done')
 #%%
