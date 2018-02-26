@@ -24,18 +24,20 @@ np.random.seed(seed=1)
 
 #%%
 # Model Save Path/name
-model_filepath = 'DeepMuMapCyleGAN_model.h5'
+model_filepath = 'DeepMuMapCyleGAN_{}_model.h5'
 
 # Data path/name
-datapath = 'DeepMuMapCycleGAN_data.hdf5'
+datapath = 'CycleGAN_data_TVT.hdf5'
 
 if not 'x_train' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
-        test_MR = np.array(f.get('MR_val')) # temporarily using val as test
+        test_MR = np.array(f.get('MR_test'))
+        test_CT = np.array(f.get('CT_test_con'))
         train_MR = np.array(f.get('MR_train'))
-        train_CT = np.array(f.get('CT_train'))
+        train_CT = np.array(f.get('CT_train_con'))
         val_MR = np.array(f.get('MR_val'))
+        val_CT = np.array(f.get('CT_val_con'))
         
 #%% Keras imports and initializations
 # Weights initializations
@@ -286,8 +288,8 @@ def DiscriminatorModel(input_shape,filtnum=16):
 print("Generating models...")
 from keras.optimizers import Adam
 # set learning rates and parameters
-lrD = 1e-4
-lrG = 1e-4
+lrD = 5e-5
+lrG = 5e-5
 λ = 10  # grad penalty weighting
 C = 500  # Cycle Loss weighting
 
@@ -376,8 +378,8 @@ fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 
 #%% training
 print('Starting training...')
-ex_ind = 165
-numIter = 20000
+ex_ind = 136
+numIter = 200
 progstep = 20
 valstep = 50
 b_s = 8
@@ -393,7 +395,7 @@ plt.ion()
 fig, ax = plt.subplots()
 MR_samp = test_MR[ex_ind,...][np.newaxis,...]
 [test,rec] = fn_genCT([MR_samp])
-samp_im = np.c_[MR_samp[0,...,0],test[0,...,0],rec[0,...,0]]
+samp_im = np.c_[MR_samp[0,...,0],rec[0,...,0],test[0,...,0],test_CT[ex_ind,...,0]]
 ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
 ax.set_axis_off()
 ax.set_clip_box([0,1])
@@ -403,7 +405,7 @@ plt.draw()
 
 print('Training adversarial model')
 # preallocate image display
-progress_ims = np.zeros((np.int(numIter/progstep),256,3*256))
+progress_ims = np.zeros((np.int(numIter/progstep),256,4*256))
 gg = 0
 vv = 0
 
@@ -427,7 +429,7 @@ for ii in t:
     if ii % progstep == 0:
         MR_samp = test_MR[ex_ind,...][np.newaxis,...]
         [test,rec] = fn_genCT([MR_samp])
-        samp_im = np.c_[MR_samp[0,...,0],test[0,...,0],rec[0,...,0]]
+        samp_im = np.c_[MR_samp[0,...,0],rec[0,...,0],test[0,...,0],test_CT[ex_ind,...,0]]
         progress_ims[gg] = samp_im
         ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
         plt.pause(.001)
@@ -440,11 +442,13 @@ for ii in t:
             MR_batch = val_MR[val_inds,...]
             valL1 = fn_evalCycle([MR_batch])[0]
             templosses[bb] = valL1
+        
         cur_val_loss = np.mean(templosses,axis=0)
         if cur_val_loss[0] <= np.min(val_loss,axis=0)[0]:
             tqdm.write('Valdiation loss decreased to {:.02e}'.format(cur_val_loss[0]))
-            GenModel_MR2CT.save(model_filepath,True,False)
-            tqdm.write("Saved model to file")
+            GenModel_MR2CT.save(model_filepath.format('MR2CT'),True,False)
+            GenModel_CT2MR.save(model_filepath.format('CT2MR'),True,False)
+            tqdm.write("Saved models to file")
         else:
             tqdm.write('Validation loss did not decrease: {:.02e}'.format(cur_val_loss[0]))
             
@@ -505,11 +509,11 @@ from keras.models import load_model
 #print("Loaded backup models from weights")
 #~#~#~#~#~#~#~#~#~#~#~#~#~#
 
-GenModel = load_model(model_filepath,None,False)
+GenModel_MR2CT = load_model(model_filepath.format('MR2CT'),None,False)
 
 # get generator results
 time1 = time.time()
-test_output = GenModel.predict(test_MR)
+test_output = GenModel_MR2CT.predict(test_MR)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
@@ -535,6 +539,6 @@ try:
             [test,rec] = fn_genCT([MR_batch])
             testCT[test_inds] = test[...,0]
             testRec[test_inds] = rec
-    multi_slice_viewer0(np.c_[test_MR[...,0],testCT,testRec],'Test Images')
+    multi_slice_viewer0(np.c_[test_MR[...,0],testRec[...,0],testCT,test_CT[...,0]],'Test Images')
 except Exception as e:
     multi_slice_viewer0(np.c_[test_MR[...,0],test_output[...,0]],'Test Images')
