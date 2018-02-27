@@ -379,8 +379,8 @@ fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 #%% training
 print('Starting training...')
 ex_ind = 136
-numIter = 200
-progstep = 20
+numIter = 20000
+progstep = 100
 valstep = 50
 b_s = 8
 val_b_s = 8
@@ -395,7 +395,9 @@ plt.ion()
 fig, ax = plt.subplots()
 MR_samp = test_MR[ex_ind,...][np.newaxis,...]
 [test,rec] = fn_genCT([MR_samp])
-samp_im = np.c_[MR_samp[0,...,0],rec[0,...,0],test[0,...,0],test_CT[ex_ind,...,0]]
+samp_im1 = np.c_[MR_samp[0,...,0],test[0,...,0]]
+samp_im2 = np.c_[rec[0,...,0],test_CT[ex_ind,...,0]]
+samp_im = np.r_[samp_im1,samp_im2]
 ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
 ax.set_axis_off()
 ax.set_clip_box([0,1])
@@ -405,7 +407,7 @@ plt.draw()
 
 print('Training adversarial model')
 # preallocate image display
-progress_ims = np.zeros((np.int(numIter/progstep),256,4*256))
+progress_ims = np.zeros((np.int(numIter/progstep),2*256,2*256))
 gg = 0
 vv = 0
 
@@ -429,7 +431,9 @@ for ii in t:
     if ii % progstep == 0:
         MR_samp = test_MR[ex_ind,...][np.newaxis,...]
         [test,rec] = fn_genCT([MR_samp])
-        samp_im = np.c_[MR_samp[0,...,0],rec[0,...,0],test[0,...,0],test_CT[ex_ind,...,0]]
+        samp_im1 = np.c_[MR_samp[0,...,0],test[0,...,0]]
+        samp_im2 = np.c_[rec[0,...,0],test_CT[ex_ind,...,0]]
+        samp_im = np.r_[samp_im1,samp_im2]
         progress_ims[gg] = samp_im
         ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
         plt.pause(.001)
