@@ -242,6 +242,7 @@ def GeneratorModel(input_shape, output_chan):
     # regressor
     # pad back to original size
     x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
+    # output image that is same size with the given number of output channels
     lay_out = Conv2D(output_chan,(1,1), activation='linear',kernel_initializer=conv_initG,
                        name='regression')(x)
     
@@ -402,12 +403,17 @@ fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 print('Starting training...')
 # index of testing set to use as progress image
 ex_ind = 136
+<<<<<<< HEAD
+numIter = 20000
+progstep = 100
+=======
 # number of iterations (batches) to train
 numIter = 200
 # how many steps between creating progress image
 progstep = 20
 # how many steps between checking validation score
 # and saving model
+>>>>>>> 34cf0180f8ce32de02a5a2d684ead3772fa02617
 valstep = 50
 # batch size
 b_s = 8
