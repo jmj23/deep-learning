@@ -7,7 +7,7 @@ Created on Sun Jun  4 20:16:21 2017
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import sys
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 import numpy as np
 import ants
 from keras.models import load_model
