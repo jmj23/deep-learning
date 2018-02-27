@@ -192,6 +192,12 @@ class_targets = np.delete(class_targets,remove_inds,axis=0)
 
 # store validation and testing data to HDF5 file
 print('Storing validation and testing data as HDF5...')
+val_inputs = np.rot90(val_inputs,k=1,axes=(1,2))
+test_inputs = np.rot90(test_inputs,k=1,axes=(1,2))
+val_reg_targets = np.rot90(val_reg_targets,k=1,axes=(1,2))
+test_reg_targets = np.rot90(test_reg_targets,k=1,axes=(1,2))
+val_class_targets = np.rot90(val_class_targets,k=1,axes=(1,2))
+test_class_targets = np.rot90(test_class_targets,k=1,axes=(1,2))
 with h5py.File(savepath, 'w') as hf:
     hf.create_dataset("MR_val",  data=val_inputs,dtype='f')
     hf.create_dataset("MR_test", data=test_inputs,dtype='f')
@@ -227,6 +233,9 @@ aug_class_targets = np.concatenate((class_targets,fl_class_targets,gm_class_targ
 
 # store training data
 print('Storing train data as HDF5...')
+aug_inputs = np.rot90(aug_inputs,k=1,axes=(1,2))
+aug_reg_targets = np.rot90(aug_reg_targets,k=1,axes=(1,2))
+aug_class_targets = np.rot90(aug_reg_targets,k=1,axes=(1,2))
 with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("MR_train",  data=aug_inputs,dtype='f')
     hf.create_dataset("CT_train_con",  data=aug_reg_targets,dtype='f')
