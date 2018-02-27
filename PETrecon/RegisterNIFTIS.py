@@ -6,7 +6,7 @@ Created on Mon Nov 13 13:04:09 2017
 @author: jmj136
 """
 import sys
-sys.path.insert(0,'/home/jmj136/deep-learning')
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 import ants
 import numpy as np
 from VisTools import multi_slice_viewer0, registration_viewer
@@ -75,7 +75,7 @@ def ProcessImgs(nac_img,CT_img,CTmac_img):
 
 #%% MR-> NAC  Registration
 def RegMRNAC(nac_imgC,water_img,fat_img,inphase_img,outphase_img):
-    MR_tx = ants.registration(fixed=nac_imgC,moving=water_img,type_of_transform='Affine')
+    MR_tx = ants.registration(fixed=nac_imgC,moving=water_img,type_of_transform='Similarity')
     reg_water = MR_tx['warpedmovout']
     reg_fat = ants.apply_transforms(fixed=nac_imgC, moving=fat_img,
                                     transformlist=MR_tx['fwdtransforms'])
@@ -175,8 +175,8 @@ def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,reg_CT,nac
     
 #%% Main Script
 
-#subjectlist = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-subjectlist = [1]
+subjectlist = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
+#subjectlist = [4]
 
 for subj in subjectlist:
     print('Loading data...')
@@ -185,19 +185,23 @@ for subj in subjectlist:
     nac_imgC,CT_imgS,CTmac_imgC = ProcessImgs(nac_img,CT_img,CTmac_img)
     print('Registering MR images...')
     reg_water,reg_fat,reg_inphase,reg_outphase = RegMRNAC(nac_imgC,water_img,fat_img,inphase_img,outphase_img)
-    print('Removing coil from CT image...')
-    CT_imgM,rig_mac = RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC)
-    print('Registering CT images...')
-    rig_CT,aff_CT2,reg_CT,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac)
-    print('Displaying results...')
-    display_ants([nac_imgC,reg_water,reg_CT])
-    display_ants_reg(reg_water,reg_CT)
-    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
-    print('Saving data for subject',subj,'...')
-    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,CT_imgRS,nac_img)
+#    print('Removing coil from CT image...')
+#    CT_imgM,rig_mac = RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC)
+#    print('Registering CT images...')
+#    rig_CT,aff_CT2,reg_CT,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac)
+#    print('Displaying results...')
+#    display_ants([nac_imgC,reg_water,reg_CT])
+#    display_ants_reg(reg_water,reg_CT)
+#    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
+#    print('Saving data for subject',subj,'...')
+#    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,CT_imgRS,nac_img)
 #    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,nac_img,nac_img)
+    ants.image_write(reg_water,savepath.format(subj,'WATER'))
+    ants.image_write(reg_fat,savepath.format(subj,'FAT'))
+    ants.image_write(reg_inphase,savepath.format(subj,'InPhase'))
+    ants.image_write(reg_outphase,savepath.format(subj,'OutPhase'))
     
 #%%
-good_inds= np.arange(18,77)
-np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
-print('Indices saved')
+#good_inds= np.arange(18,77)
+#np.savetxt('RegNIFTIs/subj{:03d}_indices.txt'.format(subj),good_inds,fmt='%u')
+#print('Indices saved')
