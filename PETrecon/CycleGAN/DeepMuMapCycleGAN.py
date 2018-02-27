@@ -29,6 +29,8 @@ model_filepath = 'DeepMuMapCyleGAN_{}_model.h5'
 # Data path/name
 datapath = 'CycleGAN_data_TVT.hdf5'
 
+# Load training, validation, and testing data
+# must be in the form [slices,x,y,channels]
 if not 'x_train' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
@@ -57,22 +59,38 @@ conv_initD = 'he_normal'
 
 gamma_init = RandomNormal(1., 0.02) # for batch normalization
 
+# Batch-norm macro
 def batchnorm():
     return BatchNormalization(momentum=0.9, axis=-1, epsilon=1.01e-5,
                                    gamma_initializer = gamma_init)
 
+# Seem to have better results with batch norm off
 use_bn = False
 
 #%% Generator Model
 def GeneratorModel(input_shape, output_chan):
+    # arguments are input shape [x,y,channels] (no # slices)
+    # and number of output channels
+    
+    # Create input layer
     lay_input = Input(shape=input_shape,name='input_layer')
     
+    # number of "inception" blocks
     numB=4
+    # number of blocks to have strided convolution
+    # blocks after this number will not be strided
+    # This is to limit the generator's receptive field
+    # set noStride=numB to use standard generator
     noStride = 2
+    # Adjust this based on input image size if not 256x256
     padamt = 1
+    # Cropping so that skip connections work out
     lay_crop = Cropping2D(((padamt,padamt),(padamt,padamt)))(lay_input)
-
+    
+    # filter parameterization. Filter numbers grow linearly with
+    # depth of net
     filtnum = 16
+    
     # contracting block 1
     rr = 1
     x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
@@ -221,8 +239,10 @@ def GeneratorModel(input_shape, output_chan):
             x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
                                use_bias=False,name='cleanup{}_2'.format(dd))(x)
     
-    # regressor    
+    # regressor
+    # pad back to original size
     x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
+    # output image that is same size with the given number of output channels
     lay_out = Conv2D(output_chan,(1,1), activation='linear',kernel_initializer=conv_initG,
                        name='regression')(x)
     
@@ -232,7 +252,7 @@ def GeneratorModel(input_shape, output_chan):
 from keras.layers import GlobalAveragePooling2D
 
 def DiscriminatorModel(input_shape,filtnum=16):
-    # Conditional Inputs
+    # Input same as generator- [x,y,channels]
     lay_input = Input(shape=input_shape,name='input')
     
     usebias = False
@@ -290,10 +310,13 @@ from keras.optimizers import Adam
 # set learning rates and parameters
 lrD = 5e-5
 lrG = 5e-5
-λ = 10  # grad penalty weighting
+λ = 10  # grad penalty weighting- leave alone
 C = 500  # Cycle Loss weighting
 
 # Discriminator models
+# CT is target
+# MR is input
+# Cycle loss is between MR to recovered MR
 DisModel_CT = DiscriminatorModel(train_CT.shape[1:],32)
 DisModel_MR = DiscriminatorModel(train_MR.shape[1:],32)
 # Generator Models
@@ -378,13 +401,22 @@ fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 
 #%% training
 print('Starting training...')
+# index of testing set to use as progress image
 ex_ind = 136
+# number of iterations (batches) to train
 numIter = 200
+# how many steps between creating progress image
 progstep = 20
+# how many steps between checking validation score
+# and saving model
 valstep = 50
+# batch size
 b_s = 8
+# validation batch size
 val_b_s = 8
+# training ratio between discriminator and generator
 train_rat = 3
+# preallocate for the training and validation losses
 dis_loss = np.zeros((numIter,2))
 gen_loss = np.zeros((numIter,2))
 val_loss = np.ones((np.int(numIter/valstep),2))
@@ -427,6 +459,7 @@ for ii in t:
     errG = fn_trainG([MR_batch, CT_batch])
     gen_loss[ii] = errG
     if ii % progstep == 0:
+        # progress image plotting
         MR_samp = test_MR[ex_ind,...][np.newaxis,...]
         [test,rec] = fn_genCT([MR_samp])
         samp_im = np.c_[MR_samp[0,...,0],rec[0,...,0],test[0,...,0],test_CT[ex_ind,...,0]]
@@ -462,6 +495,8 @@ del t
 
 print('Training complete')
 
+# backup model saving- writes as weights and network structure
+# which is more reliable than saving model as single file
 model_json = GenModel_MR2CT.to_json()
 with open("BackupModel_MR2CT.json", "w") as json_file:
     json_file.write(model_json)
@@ -475,6 +510,8 @@ GenModel_CT2MR.save_weights("BackupModel_CT2MR.h5")
 print('Backup Models saved')
 
 # display loss
+# smoothed since it's usually pretty rocky
+# the L1 losses are multipled by 1000 to match scale
 from scipy.signal import medfilt
 fig5 = plt.figure(5)
 plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],5),
