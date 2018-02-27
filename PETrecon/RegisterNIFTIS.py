@@ -132,7 +132,7 @@ def RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC):
 #%% CT-> NAC registration
 def RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac):
     # rigid CT
-    MACtx = ants.registration(fixed=nac_imgC,moving=rig_mac,type_of_transform='Affine')
+    MACtx = ants.registration(fixed=nac_imgC,moving=rig_mac,type_of_transform='Similarity')
     rig_CT = ants.apply_transforms(fixed=nac_imgC, moving=CT_imgM,
                                     transformlist=MACtx['fwdtransforms'] )
         
@@ -149,7 +149,7 @@ def RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac):
     com_imgZ = reg_water.new_image_like(com_array)
         
     # Affine CT
-    CT_aff_reg2 = ants.registration(fixed=com_imgZ,moving=rig_CT,type_of_transform='Affine',
+    CT_aff_reg2 = ants.registration(fixed=com_imgZ,moving=rig_CT,type_of_transform='Similarity',
                                     aff_sampling=16)
     aff_CT2 = CT_aff_reg2['warpedmovout']
     
@@ -175,8 +175,8 @@ def SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,reg_CT,nac
     
 #%% Main Script
 
-subjectlist = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
-#subjectlist = [4]
+#subjectlist = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
+subjectlist = [4]
 
 for subj in subjectlist:
     print('Loading data...')
@@ -185,21 +185,17 @@ for subj in subjectlist:
     nac_imgC,CT_imgS,CTmac_imgC = ProcessImgs(nac_img,CT_img,CTmac_img)
     print('Registering MR images...')
     reg_water,reg_fat,reg_inphase,reg_outphase = RegMRNAC(nac_imgC,water_img,fat_img,inphase_img,outphase_img)
-#    print('Removing coil from CT image...')
-#    CT_imgM,rig_mac = RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC)
-#    print('Registering CT images...')
-#    rig_CT,aff_CT2,reg_CT,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac)
-#    print('Displaying results...')
-#    display_ants([nac_imgC,reg_water,reg_CT])
-#    display_ants_reg(reg_water,reg_CT)
-#    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
-#    print('Saving data for subject',subj,'...')
-#    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,CT_imgRS,nac_img)
-#    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,nac_img,nac_img)
-    ants.image_write(reg_water,savepath.format(subj,'WATER'))
-    ants.image_write(reg_fat,savepath.format(subj,'FAT'))
-    ants.image_write(reg_inphase,savepath.format(subj,'InPhase'))
-    ants.image_write(reg_outphase,savepath.format(subj,'OutPhase'))
+    print('Removing coil from CT image...')
+    CT_imgM,rig_mac = RemoveCTcoil(CT_imgS,CT_img,CTmac_imgC)
+    print('Registering CT images...')
+    rig_CT,aff_CT2,reg_CT,CT_imgRS = RegCTNAC(nac_imgC,CT_imgM,reg_water,reg_fat,CTmac_imgC,rig_mac)
+    print('Displaying results...')
+    display_ants([nac_imgC,reg_water,reg_CT])
+    display_ants_reg(reg_water,reg_CT)
+    display_ants([reg_water,rig_CT,aff_CT2,reg_CT])
+    print('Saving data for subject',subj,'...')
+    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,CT_imgRS,nac_img)
+    SaveData(savepath,subj,reg_water,reg_fat,reg_inphase,reg_outphase,nac_img,nac_img)
     
 #%%
 #good_inds= np.arange(18,77)
