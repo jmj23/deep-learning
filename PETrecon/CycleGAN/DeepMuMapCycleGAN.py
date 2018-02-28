@@ -307,8 +307,8 @@ def DiscriminatorModel(input_shape,filtnum=16):
 print("Generating models...")
 from keras.optimizers import Adam
 # set learning rates and parameters
-lrD = 5e-5
-lrG = 5e-5
+lrD = 1e-4
+lrG = 1e-4
 λ = 10  # grad penalty weighting- leave alone
 C = 500  # Cycle Loss weighting
 
@@ -403,9 +403,9 @@ print('Starting training...')
 # index of testing set to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 200
+numIter = 25000
 # how many steps between creating progress image
-progstep = 20
+progstep = 100
 # how many steps between checking validation score
 # and saving model
 valstep = 50
@@ -550,17 +550,19 @@ from keras.models import load_model
 #~#~#~#~#~#~#~#~#~#~#~#~#~#
 
 GenModel_MR2CT = load_model(model_filepath.format('MR2CT'),None,False)
+GenModel_CT2MR = load_model(model_filepath.format('CT2MR'),None,False)
 
 # get generator results
 time1 = time.time()
-test_output = GenModel_MR2CT.predict(test_MR)
+CTtest = GenModel_MR2CT.predict(test_MR)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
-# Display some samples
+# Display progress images, if they exist
 from VisTools import multi_slice_viewer0
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
+    
     # save progress ims to gif
     import imageio
     output_file = 'ProgressIms.gif'
@@ -570,15 +572,19 @@ if 'progress_ims' in locals():
     gif_ims = (255*gif_ims).astype(np.uint8)
     images = [gif_ims[ii,...] for ii in range(gif_ims.shape[0])]
     imageio.mimsave(output_file, images, duration=1/5,loop=1)
-try:
-    testCT = np.zeros((test_MR.shape[:3]))
-    testRec = np.zeros_like(test_MR)
-    for bb in range(0,np.int(test_MR.shape[0]/8)):
-            test_inds = np.arange(bb*8,np.minimum((bb+1)*8,test_MR.shape[0]))
-            MR_batch = test_MR[test_inds,...]
-            [test,rec] = fn_genCT([MR_batch])
-            testCT[test_inds] = test[...,0]
-            testRec[test_inds] = rec
-    multi_slice_viewer0(np.c_[test_MR[...,0],testRec[...,0],testCT,test_CT[...,0]],'Test Images')
-except Exception as e:
-    multi_slice_viewer0(np.c_[test_MR[...,0],test_output[...,0]],'Test Images')
+
+# Calculate SSIM between test images
+from skimage.measure import compare_ssim as ssim
+SSIMs = [ssim(im1,im2) for im1, im2 in zip(test_CT[...,0],CTtest[...,0])]
+print('Mean SSIM of ', np.mean(SSIMs))
+print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
+
+# Display test images in grid
+# Input MR     | Output CT
+#----------------------
+# Recovered MR | Actual CT
+MRrec = GenModel_CT2MR.predict(CTtest)
+disp1 = np.c_[test_MR[...,0],CTtest[...,0]]
+disp2 = np.c_[MRrec[...,0],test_CT[...,0]]
+test_disp = np.concatenate((disp1,disp2),axis=1)
+multi_slice_viewer0(test_disp,'Test Images',SSIMs)
