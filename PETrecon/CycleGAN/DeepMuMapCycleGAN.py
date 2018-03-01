@@ -571,7 +571,7 @@ if 'progress_ims' in locals():
     gif_ims[gif_ims>1] = 1
     gif_ims = (255*gif_ims).astype(np.uint8)
     images = [gif_ims[ii,...] for ii in range(gif_ims.shape[0])]
-    imageio.mimsave(output_file, images, duration=1/5,loop=1)
+    imageio.mimsave(output_file, images, duration=1/6,loop=1)
 
 # Calculate SSIM between test images
 from skimage.measure import compare_ssim as ssim
@@ -583,8 +583,17 @@ print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs)
 # Input MR     | Output CT
 #----------------------
 # Recovered MR | Actual CT
+
 MRrec = GenModel_CT2MR.predict(CTtest)
 disp1 = np.c_[test_MR[...,0],CTtest[...,0]]
 disp2 = np.c_[MRrec[...,0],test_CT[...,0]]
 test_disp = np.concatenate((disp1,disp2),axis=1)
 multi_slice_viewer0(test_disp,'Test Images',SSIMs)
+
+# Load full MR data and run inferencing for visual inspection
+with h5py.File('CycleGAN_FullMRdata.hdf5','r') as f:
+        full_MR = np.array(f.get('MR_full'))
+full_CT = GenModel_MR2CT.predict(full_MR)
+full_MRrec = GenModel_CT2MR.predict(full_CT)
+full_disp = np.concatenate((full_MR[...,0],full_CT[...,0],full_MRrec[...,0]),axis=2)
+multi_slice_viewer0(full_disp,'Full Images')
