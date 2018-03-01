@@ -27,7 +27,7 @@ model_filepath = 'LowDosePET_pix2pixModel_30s.h5'
 #model_filepath = 'LowDosePET_pix2pixModel_60s.h5'
 
 # Data path/name
-datapath = 'lowdosePETdata_30s.hdf5'
+datapath = '../lowdosePETdata_30s.hdf5'
 #datapath = 'lowdosePETdata_60s.hdf5'
 
 MS = 3
