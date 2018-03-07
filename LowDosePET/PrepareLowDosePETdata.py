@@ -42,7 +42,7 @@ def ConvertToMultiSlice(array,MS=3):
     # pre allocate
     MSarray = np.zeros((tshp[0],MS,tshp[1],tshp[2],tshp[3]))
     # loop over main body of array
-    for ss in range(MSos,tshp[0]-MSos):
+    for ss in range(tshp[0]):
         for mm in range(MS):
             ind = np.clip(ss-MSos+mm,0,tshp[0]-1)
             MSarray[ss,mm,...] = array[ind]        
@@ -136,13 +136,8 @@ aug_inputs = inputs
 
 # store training data
 print('Storing training inputs as HDF5...')
-try:
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-except Exception as e:
-    os.remove(savepath)
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
+with h5py.File(savepath, 'w') as hf:
+    hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
         
 del aug_inputs
 del inputs
@@ -255,8 +250,8 @@ from VisTools import multi_slice_viewer0
 dnum = 100
 #disp_inds = np.random.choice(aug_inputs.shape[0], dnum, replace=False)
 #multi_slice_viewer0(np.c_[aug_inputs[disp_inds,...,0],aug_inputs[disp_inds,...,1],aug_targets[disp_inds,...,0]],'Training data')
-multi_slice_viewer0(np.c_[val_inputs[...,0],val_inputs[...,1],val_targets[...,0]],'Validation Data')
-multi_slice_viewer0(np.c_[test_inputs[...,0],test_inputs[...,1],test_targets[...,0]],'Test data')
+multi_slice_viewer0(np.c_[val_inputs[:,2,...,0],val_inputs[:,2,...,1],val_targets[...,0]],'Validation Data')
+multi_slice_viewer0(np.c_[test_inputs[:,2,...,0],test_inputs[:,2,...,1],test_targets[...,0]],'Test data')
 
 del val_inputs
 del val_targets
