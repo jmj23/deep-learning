@@ -25,7 +25,7 @@ val_subj_vec = [2, 16]
 test_subj_vec = [14, 4, 6]
 np.random.seed(seed=2)
 eps = 1e-8
-numFrames = 3
+numFrames = 2   # how many different frames of each PET reconstruction to keep
 sCO = 3 # slice cutoff
 normfac = 20000 # what the images are normalized to. Keep this is mind when
                 # looking at images afterwards
