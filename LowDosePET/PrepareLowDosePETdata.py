@@ -8,7 +8,6 @@ import h5py
 import numpy as np
 #import skimage.exposure as skexp
 import nibabel as nib
-import os
 import sys
 sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 
