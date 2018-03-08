@@ -5,6 +5,7 @@ Created on Wed May 31 14:06:34 2017
 @author: JMJ136
 """
 import sys
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from matplotlib import pyplot as plt
@@ -12,7 +13,14 @@ import numpy as np
 import h5py
 import time
 from tqdm import tqdm, trange
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
+# Use first available GPU
+import GPUtil
+if not 'DEVICE_ID' in locals():
+    DEVICE_ID = GPUtil.getFirstAvailable()[0]
+    print('Using GPU',DEVICE_ID)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+
 np.random.seed(seed=1)
 #%%
 # Model Save Path/name
