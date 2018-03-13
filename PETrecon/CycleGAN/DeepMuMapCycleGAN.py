@@ -13,6 +13,9 @@ import h5py
 import time
 from tqdm import tqdm, trange
 import Models
+import imageio
+from VisTools import multi_slice_viewer0
+from skimage.measure import compare_ssim as ssim
 
 # Use first available GPU
 import GPUtil
@@ -315,12 +318,11 @@ time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
 # Display progress images, if they exist
-from VisTools import multi_slice_viewer0
+
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
     
     # save progress ims to gif
-    import imageio
     output_file = 'ProgressIms.gif'
     gif_ims = np.copy(progress_ims)
     gif_ims[gif_ims<0] = 0
@@ -330,7 +332,6 @@ if 'progress_ims' in locals():
     imageio.mimsave(output_file, images, duration=1/6,loop=1)
 
 # Calculate SSIM between test images
-from skimage.measure import compare_ssim as ssim
 SSIMs = [ssim(im1,im2) for im1, im2 in zip(test_CT[...,0],CTtest[...,0])]
 print('Mean SSIM of ', np.mean(SSIMs))
 print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
