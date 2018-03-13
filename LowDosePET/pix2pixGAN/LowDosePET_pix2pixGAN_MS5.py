@@ -216,7 +216,7 @@ def GeneratorModel(input_shape):
 #%% Discriminator model
 from keras.layers import Flatten, Dense#, Activation
 
-def DiscriminatorModel(input_shape,test_shape,filtnum=16):
+def DiscriminatorModel(input_shape,test_shape,filtnum=16,numBlocks=5):
     # Conditional Inputs
     lay_cond_input = Input(shape=input_shape,name='conditional_input')
     
@@ -280,8 +280,8 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     
     # Merge blocks
     lay_act = concatenate([lay_act1,lay_act2],name='InputMerge')
-    # contracting blocks 2-5
-    for rr in range(2,6):
+    # contracting blocks 2-numBlocks
+    for rr in range(2,numBlocks+1):
         lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
         lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
