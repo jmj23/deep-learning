@@ -13,16 +13,10 @@ from skimage.draw import polygon
 import os
 # Use first available GPU
 import GPUtil
-try:
-    if not 'DEVICE_ID' in locals():
-            DEVICE_ID = GPUtil.getFirstAvailable()[0]
-            print('Using GPU',DEVICE_ID)
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
-except Exception as e:
-    print('No GPU available')
-    print('Using CPU')
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    
+if not 'DEVICE_ID' in locals():
+    DEVICE_ID = GPUtil.getFirstAvailable()[0]
+    print('Using GPU',DEVICE_ID)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 import psutil
 import configparser
 import scipy.io as spio
@@ -2542,5 +2536,5 @@ if __name__ == "__main__":
         print('rerunning')
     window = MainApp()
     window.show()
-    sys.exit(app.exec_())
+    app.exec_()
     print('here')
