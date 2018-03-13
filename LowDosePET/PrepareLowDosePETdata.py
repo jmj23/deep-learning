@@ -8,76 +8,80 @@ import h5py
 import numpy as np
 #import skimage.exposure as skexp
 import nibabel as nib
-import os
 import sys
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 
-multiSlice = 3
+multiSlice = 5
 
 LDtype = '30s'
 #LDtype = '60s'
 
-if LDtype == '30s':
-    savepath = 'lowdosePETdata_30s.hdf5'
-elif LDtype == '60s':
-    savepath = 'lowdosePETdata_60s.hdf5'
-    
-if LDtype == '30s':
-    LowDosePath = 'lowdose_30s/volunteer{:03d}_lowdose.nii.gz'
-elif LDtype == '60s':
-    LowDosePath = 'lowdose_60s/volunteer{:03d}_lowdose.nii.gz'
+savepath = 'lowdosePETdata_{:s}_MS{:d}.hdf5'.format(LDtype,multiSlice)
+LowDosePath = 'lowdose_{:s}/volunteer{{:03d}}_lowdose.nii.gz'.format(LDtype)
 
 train_subj_vec = [3,5,7,8,9,10,11,12,13,15,17]
 val_subj_vec = [2, 16]
 test_subj_vec = [14, 4, 6]
 np.random.seed(seed=2)
 eps = 1e-8
-numFrames = 3
+numFrames = 2   # how many different frames of each PET reconstruction to keep
 sCO = 3 # slice cutoff
 normfac = 20000 # what the images are normalized to. Keep this is mind when
                 # looking at images afterwards
 
 #%% Training data loading functions
+                
+# Convert image array to sets of multiple slices
+# [slices,x,y] ==> [slices,MS,x,y]
+# end slices are repeated
 def ConvertToMultiSlice(array,MS=3):
+    # input shape
     tshp = array.shape
     MSos = np.int((MS-1)/2) #MultiSlice Offset
+    # pre allocate
     MSarray = np.zeros((tshp[0],MS,tshp[1],tshp[2],tshp[3]))
-    for ss in range(MSos,tshp[0]-MSos):
-        MSarray[ss,0,...] = array[ss-1]
-        MSarray[ss,1,...] = array[ss]
-        MSarray[ss,2,...] = array[ss+1]
-    MSarray[0,0,...] = array[0]
-    MSarray[0,1,...] = array[0]
-    MSarray[0,2,...] = array[1]
-    MSarray[-1,0,...] = array[-2]
-    MSarray[-1,1,...] = array[-1]
-    MSarray[-1,2,...] = array[-1]
+    # loop over main body of array
+    for ss in range(tshp[0]):
+        for mm in range(MS):
+            ind = np.clip(ss-MSos+mm,0,tshp[0]-1)
+            MSarray[ss,mm,...] = array[ind]        
     return MSarray
+
 # Inputs
 def load_training_input(subj):
+    # nifti path
     waterpath = 'RegNIFTIs/subj{:03d}_WATER.nii'.format(subj)
     fatpath = 'RegNIFTIs/subj{:03d}_FAT.nii'.format(subj)
+    # low dose path
     LDpath = LowDosePath.format(subj)
+    # load low dose images
     LDims = nib.load(LDpath).get_data()
+    # arrange axes appropriately. ugh
     LDims = np.rollaxis(np.rot90(np.rollaxis(LDims,2,0),1,axes=(1,2)),3,0)
+    # grab first frame
     frame1 = LDims[0]
+    # normalize
     for im in frame1:
         im[im<0] = 0
         im /= normfac
+    # load water nifti and normalize
     wnft = nib.as_closest_canonical(nib.load(waterpath.format(subj)))
     wims = np.flip(np.rot90(np.rollaxis(wnft.get_data(),2,0),k=-1,axes=(1,2)),2)
     for im in wims:
         im[im<0] = 0
         im /= (np.max(im)+eps)
-    
+    # load fat nifti and normalize
     fnft = nib.as_closest_canonical(nib.load(fatpath.format(subj)))
     fims= np.flip(np.rot90(np.rollaxis(fnft.get_data(),2,0),k=-1,axes=(1,2)),2)
     for im in fims:
         im[im<0] = 0
         im /= (np.max(im)+eps)
+    # stack together
+    # cut off some slices due to sloppy registration
     inputs = np.stack((frame1,wims,fims),axis=3)[sCO:-sCO,...]
+    # convert to multi slice
     inputs = ConvertToMultiSlice(inputs,multiSlice)
-    
+    # repeat for rest of frames
     for fnum in range(1,numFrames):
         frame = LDims[fnum]
         for im in frame:
@@ -91,12 +95,15 @@ def load_training_input(subj):
 
 # Target
 def load_training_target(subj):
+    # full dose image path
     FDpath = 'fulldose/volunteer{:03d}_fulldose.nii.gz'.format(subj)
+    # load, format, and normalize
     FDims = nib.load(FDpath).get_data()
     FDims = np.rot90(np.rollaxis(FDims,2,0),1,axes=(1,2))
     for im in FDims:
         im[im<0]=0
         im /= normfac
+    # tile so the targets are the same for each frame
     targets = np.tile(FDims[sCO:-sCO,...,np.newaxis],(numFrames,1,1,1))
     return targets
 
@@ -128,13 +135,8 @@ aug_inputs = inputs
 
 # store training data
 print('Storing training inputs as HDF5...')
-try:
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
-except Exception as e:
-    os.remove(savepath)
-    with h5py.File(savepath, 'x') as hf:
-        hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
+with h5py.File(savepath, 'w') as hf:
+    hf.create_dataset("train_inputs",  data=aug_inputs,dtype='f')
         
 del aug_inputs
 del inputs
@@ -243,12 +245,12 @@ with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("val_targets",  data=val_targets,dtype='f')
     hf.create_dataset("test_targets",  data=test_targets,dtype='f')
 #%%
-#from VisTools import multi_slice_viewer0
-#dnum = 500
+from VisTools import multi_slice_viewer0
+dnum = 100
 #disp_inds = np.random.choice(aug_inputs.shape[0], dnum, replace=False)
 #multi_slice_viewer0(np.c_[aug_inputs[disp_inds,...,0],aug_inputs[disp_inds,...,1],aug_targets[disp_inds,...,0]],'Training data')
-#multi_slice_viewer0(np.c_[val_inputs[...,0],val_inputs[...,1],val_targets[...,0]],'Validation Data')
-#multi_slice_viewer0(np.c_[test_inputs[...,0],test_inputs[...,1],test_targets[...,0]],'Test data')
+multi_slice_viewer0(np.c_[val_inputs[:,2,...,0],val_inputs[:,2,...,1],val_targets[...,0]],'Validation Data')
+multi_slice_viewer0(np.c_[test_inputs[:,2,...,0],test_inputs[:,2,...,1],test_targets[...,0]],'Test data')
 
 del val_inputs
 del val_targets

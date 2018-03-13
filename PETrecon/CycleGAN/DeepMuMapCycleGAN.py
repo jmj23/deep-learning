@@ -12,6 +12,10 @@ import numpy as np
 import h5py
 import time
 from tqdm import tqdm, trange
+import Models
+import imageio
+from VisTools import multi_slice_viewer0
+from skimage.measure import compare_ssim as ssim
 
 # Use first available GPU
 import GPUtil
@@ -41,271 +45,10 @@ if not 'x_train' in locals():
         val_MR = np.array(f.get('MR_val'))
         val_CT = np.array(f.get('CT_val_con'))
         
-#%% Keras imports and initializations
-# Weights initializations
-# bias are initailized as 0
-import keras.backend as K
-from keras.layers import Input, Cropping2D, Conv2D, concatenate
-from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
-from keras.layers import UpSampling2D
-from keras.layers.advanced_activations import LeakyReLU, ELU
-from keras.models import Model
-from keras.initializers import RandomNormal
-
-#conv_initG = RandomNormal(0, 0.02)
-conv_initG = 'glorot_uniform'
-#conv_initD = RandomNormal(0, 0.02)
-conv_initD = 'he_normal'
-
-gamma_init = RandomNormal(1., 0.02) # for batch normalization
-
-# Batch-norm macro
-def batchnorm():
-    return BatchNormalization(momentum=0.9, axis=-1, epsilon=1.01e-5,
-                                   gamma_initializer = gamma_init)
-
-# Seem to have better results with batch norm off
-use_bn = False
-
-#%% Generator Model
-def GeneratorModel(input_shape, output_chan):
-    # arguments are input shape [x,y,channels] (no # slices)
-    # and number of output channels
-    
-    # Create input layer
-    lay_input = Input(shape=input_shape,name='input_layer')
-    
-    # number of "inception" blocks
-    numB=4
-    # number of blocks to have strided convolution
-    # blocks after this number will not be strided
-    # This is to limit the generator's receptive field
-    # set noStride=numB to use standard generator
-    noStride = 2
-    # Adjust this based on input image size if not 256x256
-    padamt = 1
-    # Cropping so that skip connections work out
-    lay_crop = Cropping2D(((padamt,padamt),(padamt,padamt)))(lay_input)
-    
-    # filter parameterization. Filter numbers grow linearly with
-    # depth of net
-    filtnum = 16
-    
-    # contracting block 1
-    rr = 1
-    x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(lay_crop)
-    x1 = ELU(name='elu{}_1'.format(rr))(x1)
-    x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(lay_crop)
-    x3 = ELU(name='elu{}_3'.format(rr))(x3)
-    x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(lay_crop)
-    x51 = ELU(name='elu{}_51'.format(rr))(x51)
-    x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv52_{}'.format(rr))(x51)
-    x52 = ELU(name='elu{}_52'.format(rr))(x52)
-    lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
-    x = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu{}_all'.format(rr))(x)
-    x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
-                       name='ConvStride_{}'.format(rr))(x)
-    x = ELU(name='elu{}_stride'.format(rr))(x)
-    act_list = [x]
-    
-    # contracting blocks 2->numB
-    for rr in range(2,numB+1):
-        x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(x)
-        x1 = ELU(name='elu{}_1'.format(rr))(x1)
-        x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(x)
-        x3 = ELU(name='elu{}_3'.format(rr))(x3)
-        x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(x)
-        x51 = ELU(name='elu{}_51'.format(rr))(x51)
-        x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv52_{}'.format(rr))(x51)
-        x52 = ELU(name='elu{}_52'.format(rr))(x52)
-        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
-        x = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='ConvAll_{}'.format(rr))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}_all'.format(rr))(x)
-        if rr > noStride:
-            x = Conv2D(filtnum*rr,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initG,
-                       name='ConvNoStride_{}'.format(rr))(x)
-        else:
-            x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
-                       name='ConvStride_{}'.format(rr))(x)
-        x = ELU(name='elu{}_stride'.format(rr))(x)
-        act_list.append(x)
-    
-    # expanding block numB
-    dd=numB
-    x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv1_{}'.format(dd))(x)
-    x1 = ELU(name='elu{}d_1'.format(dd))(x1)
-    x3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv3_{}'.format(dd))(x)
-    x3 = ELU(name='elu{}d_3'.format(dd))(x3)
-    x51 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv51_{}'.format(dd))(x)
-    x51 = ELU(name='elu{}d_51'.format(dd))(x51)
-    x52 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv52_{}'.format(dd))(x51)
-    x52 = ELU(name='elu{}d_52'.format(dd))(x52)
-    x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
-    x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-    if dd >noStride:
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}d_all'.format(dd))(x)
-        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                           use_bias=False,name='cleanup{}_1'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                           use_bias=False,name='cleanup{}_2'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-    else:
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}d_all'.format(dd))(x)    
-        x = UpSampling2D()(x)
-        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                           use_bias=False,name='cleanup{}_1'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                           use_bias=False,name='cleanup{}_2'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-    
-    # expanding blocks (numB-1)->1
-    expnums = list(range(1,numB))
-    expnums.reverse()
-    for dd in expnums:
-        x = concatenate([act_list[dd-1],x],name='skip_connect_{}'.format(dd))
-        x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv1_{}'.format(dd))(x)
-        x1 = ELU(name='elu{}d_1'.format(dd))(x1)
-        x3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv3_{}'.format(dd))(x)
-        x3 = ELU(name='elu{}d_3'.format(dd))(x3)
-        x51 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv51_{}'.format(dd))(x)
-        x51 = ELU(name='elu{}d_51'.format(dd))(x51)
-        x52 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv52_{}'.format(dd))(x51)
-        x52 = ELU(name='elu{}d_52'.format(dd))(x52)
-        x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
-        x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-        if dd >noStride:
-            if use_bn:
-                x = batchnorm()(x, training=1)
-            x = ELU(name='elu{}d_all'.format(dd))(x)
-            x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                               use_bias=False,name='cleanup{}_1'.format(dd))(x)
-            if use_bn:
-                x = batchnorm()(x, training=1)
-            x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-            x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                               use_bias=False,name='cleanup{}_2'.format(dd))(x)
-            if use_bn:
-                x = batchnorm()(x, training=1)
-            x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-        else:
-            if use_bn:
-                x = batchnorm()(x, training=1)
-            x = ELU(name='elu{}d_all'.format(dd))(x)    
-            x = UpSampling2D()(x)
-            x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                               use_bias=False,name='cleanup{}_1'.format(dd))(x)
-            if use_bn:
-                x = batchnorm()(x, training=1)
-            x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-            x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                               use_bias=False,name='cleanup{}_2'.format(dd))(x)
-    
-    # regressor
-    # pad back to original size
-    x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
-    lay_out = Conv2D(output_chan,(1,1), activation='linear',kernel_initializer=conv_initG,
-                       name='regression')(x)
-    
-    return Model(lay_input,lay_out)
-#%% Discriminator model
-#from keras.layers import Flatten, Dense#, Activation
-from keras.layers import GlobalAveragePooling2D
-
-def DiscriminatorModel(input_shape,filtnum=16):
-    # Input same as generator- [x,y,channels]
-    lay_input = Input(shape=input_shape,name='input')
-    
-    usebias = False
-    # contracting block 1
-    rr = 1
-    lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv1_{}'.format(rr))(lay_input)
-    lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv3_{}'.format(rr))(lay_input)
-    lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv51_{}'.format(rr))(lay_input)
-    lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
-    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-    lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
-#    bn = batchnorm()(lay_conv_all, training=1)
-    lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
-    lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
-                       use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
-    lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
-    
-    
-    # contracting blocks 2-3
-    for rr in range(2,4):
-        lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
-        lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv3_{}'.format(rr))(lay_act)
-        lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv51_{}'.format(rr))(lay_act)
-        lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
-        lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-        lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
-                       use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
-#        bn = batchnorm()(lay_conv_all, training=1)
-        lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
-        lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
-                       use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
-        lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
-    
-    lay_one = Conv2D(1,(3,3),kernel_initializer=conv_initD,
-                     use_bias=usebias,name='ConvOne')(lay_act)
-    lay_avg = GlobalAveragePooling2D()(lay_one)
-    
-#    lay_flat = Flatten()(lay_act)
-#    lay_dense = Dense(1,kernel_initializer=conv_initD,name='Dense1')(lay_flat)
-    
-    return Model(lay_input,lay_avg)
-
 #%% Setup models for training
 print("Generating models...")
 from keras.optimizers import Adam
+import keras.backend as K
 # set learning rates and parameters
 lrD = 1e-4
 lrG = 1e-4
@@ -316,11 +59,26 @@ C = 500  # Cycle Loss weighting
 # CT is target
 # MR is input
 # Cycle loss is between MR to recovered MR
-DisModel_CT = DiscriminatorModel(train_CT.shape[1:],32)
-DisModel_MR = DiscriminatorModel(train_MR.shape[1:],32)
+
+# number of downsampling blocks
+numBlocks = 3
+# initial filter number
+numFilters = 32
+
+DisModel_CT = Models.CycleGANdiscriminator(train_CT.shape[1:],numFilters,numBlocks)
+DisModel_MR = Models.CycleGANdiscriminator(train_MR.shape[1:],numFilters,numBlocks)
 # Generator Models
-GenModel_MR2CT = GeneratorModel(train_MR.shape[1:],train_CT.shape[-1])
-GenModel_CT2MR = GeneratorModel(train_CT.shape[1:],train_MR.shape[-1])
+# number of downsampling blocks
+numBlocks = 4
+# initial filter number
+numFilters = 16
+# number of blocks that have strided convolution
+noStride = 2
+# Seem to have better results with batch norm off
+use_bn = False
+
+GenModel_MR2CT = Models.CycleGANgenerator(train_MR.shape[1:],train_CT.shape[-1],numFilters,numBlocks,noStride,use_bn)
+GenModel_CT2MR = Models.CycleGANgenerator(train_CT.shape[1:],train_MR.shape[-1],numFilters,numBlocks,noStride,use_bn)
 
 # Endpoints of graph- MR to CT
 real_MR = GenModel_MR2CT.inputs[0]
@@ -341,6 +99,7 @@ fakeMRscore = DisModel_MR([fake_MR])
 
 #%% CT discriminator loss function
 # create mixed output for gradient penalty
+from keras.layers import Input
 ep_input1 = K.placeholder(shape=(None,1,1,1))
 mixed_CT = Input(shape=train_CT.shape[1:],
                     tensor=ep_input1 * real_CT + (1-ep_input1) * fake_CT)
@@ -559,12 +318,11 @@ time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
 # Display progress images, if they exist
-from VisTools import multi_slice_viewer0
+
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
     
     # save progress ims to gif
-    import imageio
     output_file = 'ProgressIms.gif'
     gif_ims = np.copy(progress_ims)
     gif_ims[gif_ims<0] = 0
@@ -574,7 +332,6 @@ if 'progress_ims' in locals():
     imageio.mimsave(output_file, images, duration=1/6,loop=1)
 
 # Calculate SSIM between test images
-from skimage.measure import compare_ssim as ssim
 SSIMs = [ssim(im1,im2) for im1, im2 in zip(test_CT[...,0],CTtest[...,0])]
 print('Mean SSIM of ', np.mean(SSIMs))
 print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
