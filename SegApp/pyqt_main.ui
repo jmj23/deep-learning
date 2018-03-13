@@ -716,7 +716,7 @@
      <x>0</x>
      <y>0</y>
      <width>596</width>
-     <height>21</height>
+     <height>25</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -738,13 +738,16 @@
     <property name="title">
      <string>Functions</string>
     </property>
-    <addaction name="actionShift_Dimensions"/>
-    <addaction name="actionPrepare_Inputs"/>
     <addaction name="actionSegment"/>
     <addaction name="separator"/>
     <addaction name="actionCorrect_Segmentation"/>
     <addaction name="actionCalculate_PDWF"/>
     <addaction name="actionReset_Mask"/>
+    <addaction name="separator"/>
+    <addaction name="actionShift_Dimensions"/>
+    <addaction name="actionFlip_A_P"/>
+    <addaction name="actionFlip_L_R"/>
+    <addaction name="actionFlip_S_I"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -884,6 +887,21 @@
   <action name="action3D_Masked">
    <property name="text">
     <string>Masked images...</string>
+   </property>
+  </action>
+  <action name="actionFlip_L_R">
+   <property name="text">
+    <string>Flip L/R</string>
+   </property>
+  </action>
+  <action name="actionFlip_A_P">
+   <property name="text">
+    <string>Flip A/P</string>
+   </property>
+  </action>
+  <action name="actionFlip_S_I">
+   <property name="text">
+    <string>Flip S/I</string>
    </property>
   </action>
  </widget>

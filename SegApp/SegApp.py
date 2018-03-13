@@ -13,18 +13,24 @@ from skimage.draw import polygon
 import os
 # Use first available GPU
 import GPUtil
-if not 'DEVICE_ID' in locals():
-    DEVICE_ID = GPUtil.getFirstAvailable()[0]
-    print('Using GPU',DEVICE_ID)
-os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+try:
+    if not 'DEVICE_ID' in locals():
+            DEVICE_ID = GPUtil.getFirstAvailable()[0]
+            print('Using GPU',DEVICE_ID)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+except Exception as e:
+    print('No GPU available')
+    print('Using CPU')
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
 import psutil
 import configparser
 import scipy.io as spio
-import dicom
+import pydicom as dicom
 import nibabel as nib
 from natsort import natsorted
 import time
-import h5py
+#import h5py
 from CustomMetrics import jac_met, dice_coef, dice_coef_loss, perc_error
 import keras
 
@@ -60,12 +66,15 @@ class MainApp(QtBaseClass1, Ui_MainWindow):
         self.ui.actionLoad_Model_Weights.triggered.connect(self.load_model_weights)
         self.ui.actionEdit_Preferences.triggered.connect(self.setPreferences)
         
-        self.ui.actionShift_Dimensions.triggered.connect(self.shiftDims)
-        self.ui.actionPrepare_Inputs.triggered.connect(self.prepInputs)
+        
         self.ui.actionSegment.triggered.connect(self.segment)
         self.ui.actionCorrect_Segmentation.triggered.connect(self.openCorrector)
         self.ui.actionCalculate_PDWF.triggered.connect(self.calcPDWF)
         self.ui.actionReset_Mask.triggered.connect(self.resetMask)
+        self.ui.actionShift_Dimensions.triggered.connect(self.shiftDims)
+        self.ui.actionFlip_L_R.triggered.connect(lambda: self.flipIms(2))
+        self.ui.actionFlip_A_P.triggered.connect(lambda: self.flipIms(1))
+        self.ui.actionFlip_S_I.triggered.connect(lambda: self.flipIms(0))
         
         self.ui.action3D_Water.triggered.connect(lambda: self.make_3Dplot('w'))
         self.ui.action3D_Fat.triggered.connect(lambda: self.make_3Dplot('f'))
@@ -1116,6 +1125,29 @@ class MainApp(QtBaseClass1, Ui_MainWindow):
                 self.curimages = self.imagesF
         except Exception as e:
             print(e)
+        self.updateIms()
+        self.updateLines()
+        
+    def flipIms(self,axis):
+        try:
+            self.imagesW = np.flip(self.imagesW,axis)
+            self.imagesF = np.flip(self.imagesF,axis)
+            if len(self.PDWFmap)==0:
+                self.PDWFmap = np.flip(self.PDWFmap,axis)
+            if len(self.mask)==0:
+                self.mask = np.flip(self.mask,axis)
+            if len(self.segOutput) == 0:
+                self.segOutput = np.flip(self.segOutput,axis)
+            if len(self.segmask) == 0:
+                self.segmask = np.flip(self.segmask,axis)
+            if len(self.uncor_segmask) == 0:
+                self.uncor_segmask = np.flip(self.uncor_segmask,axis)
+        except Exception as e:
+            print(e)
+        if self.curimagetype=='water':
+            self.curimages = self.imagesW
+        elif self.curimagetype=='fat':
+            self.curimages = self.imagesF
         self.updateIms()
         self.updateLines()
         
@@ -2502,6 +2534,7 @@ class CalcThread(QThread):
             self.quit()           
 #%%
 if __name__ == "__main__":
+    app = 0
     app = QtWidgets.QApplication.instance()
     if app is None:
         app = QtWidgets.QApplication(sys.argv)
@@ -2509,4 +2542,5 @@ if __name__ == "__main__":
         print('rerunning')
     window = MainApp()
     window.show()
-    app.exec_()
+    sys.exit(app.exec_())
+    print('here')
