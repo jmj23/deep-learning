@@ -8,6 +8,7 @@ Created on Fri Mar  9 09:37:59 2018
 
 import socket
 import sys
+import numpy as np
 
 # create a TCP/IP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -29,15 +30,16 @@ while True:
         
         #Receive the data in small chunks and retransmit it
         while True:
-            data = connection.recv(16)
-            print('Received "%s"'% data, file=sys.stderr)
+            data = connection.recv(4)
+            print('Received "%s"'% data.decode(), file=sys.stderr)
             if data:
                 print('Sending data back to client',file=sys.stderr)
                 connection.sendall(data)
             else:
                 print('No more data from',client_address,file=sys.stderr)
-                 break
-     finally:
+                break
+    finally:
          # clean up the connection
          connection.close()
+         sock.close()
          
