@@ -632,7 +632,7 @@ def DiscriminatorMS5(conditional_input_shape,test_input_shape,filtnum=16):
     return Model(inputs=[lay_cond_input,lay_test_input],outputs=[lay_dense])
 
 #%% Cycle GAN Generator Model with limited receptive field
-def CycleGANgenerator(input_shape, output_chan,filtnum=16,numBlocks=4,noStride=2,use_bn=False):
+def CycleGANgenerator(input_shape, output_chan,filtnum=16,numBlocks=4,noStride=2,use_bn=False,reg=True):
     # arguments are input shape [x,y,channels] (no # slices)
     # and number of output channels
     
@@ -805,11 +805,15 @@ def CycleGANgenerator(input_shape, output_chan,filtnum=16,numBlocks=4,noStride=2
             x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
                                use_bias=False,name='cleanup{}_2'.format(dd))(x)
     
-    # regressor
+    # regressor or classifier
     # pad back to original size
     x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
-    lay_out = Conv2D(output_chan,(1,1), activation='linear',kernel_initializer=conv_initG,
+    if reg:
+        lay_out = Conv2D(output_chan,(1,1), activation='linear',kernel_initializer=conv_initG,
                        name='regression')(x)
+    else:
+        lay_out = Conv2D(output_chan,(1,1),activation='softmax',kernel_initializer=conv_initG,
+                         name='classification')(x)
     
     return Model(lay_input,lay_out)
 
