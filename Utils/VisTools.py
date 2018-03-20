@@ -82,7 +82,8 @@ def multi_slice_viewer0(volume,title='',labels=[]):
         print('Volume must be 3D array')
         return
     ax.volume = volume
-    ax.index = volume.shape[0] // 2
+#    ax.index = volume.shape[0] // 2
+    ax.index = 0
     ax.imshow(volume[ax.index,...],cmap='gray',vmin=0, vmax=1)
     ax.set_title(title)
     ax.set_axis_off()
