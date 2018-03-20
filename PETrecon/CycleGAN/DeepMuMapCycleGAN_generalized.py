@@ -26,52 +26,38 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
 np.random.seed(seed=1)
 
-#%%
+#%%~#~#~#~#~#~#~#~#~#~#~#~#~#~#
+# Parameters/variables to set
+#~#~#~#~#~#~#~#~#~#~#~#~#~#~#~#
+
 # Model Save Path/name
 model_filepath = 'DeepMuMapCyleGAN_{}_model.h5'
 
 # Data path/name
 datapath = 'CycleGAN_data_TVT.hdf5'
 
-# Load training, validation, and testing data
-# must be in the form [slices,x,y,channels]
-if not 'x_train' in locals():
-    print('Loading data...')
-    with h5py.File(datapath,'r') as f:
-        test_MR = np.array(f.get('MR_test'))
-        test_CT = np.array(f.get('CT_test_dis'))
-        train_MR = np.array(f.get('MR_train'))
-        train_CT = np.array(f.get('CT_train_dis'))
-        val_MR = np.array(f.get('MR_val'))
-        val_CT = np.array(f.get('CT_val_dis'))
-        
-#%% Setup models for training
-print("Generating models...")
-from keras.optimizers import Adam
-import keras.backend as K
-# set learning rates and parameters
-lrD = 1e-5
-lrG = 1e-5
+# Training or testing
+# False will only load the testing
+# datset
+training = True
+
+# set learning rates and loss weights
+lrD = 1e-5  # discriminator learning rate
+lrG = 1e-5  # generator learning rate
 λ = 10  # grad penalty weighting- leave alone
 C = 500  # Cycle Loss weighting
 
-# Discriminator models
-# CT is target
-# MR is input
-# Cycle loss is between MR to recovered MR
-
+# Discriminator parameters
 # number of downsampling blocks
-numBlocks = 3
+numBlocks_D = 3
 # initial filter number
-numFilters = 32
+numFilters_D = 32
 
-DisModel_CT = Models.CycleGANdiscriminator(train_CT.shape[1:],numFilters,numBlocks)
-DisModel_MR = Models.CycleGANdiscriminator(train_MR.shape[1:],numFilters,numBlocks)
-# Generator Models
+# Generator Parameters
 # number of downsampling blocks
-numBlocks = 4
+numBlocks_G = 4
 # initial filter number
-numFilters = 16
+numFilters_G = 16
 # number of blocks that have strided convolution
 noStride = 2
 # Seem to have better results with batch norm off
@@ -81,10 +67,57 @@ use_bn = False
 CT_reg = False
 MR_reg = True
 
+# whether to plot progress images
+plot_prog = True
+# whether to save progress gif after training
+gif_prog = True
+# index of testing slice to use as progress image
+ex_ind = 136
+# number of iterations (batches) to train
+numIter = 500
+# how many iterations between updating progress image
+progstep = 10
+# how many iterations between checking validation score
+# and saving model
+valstep = 100
+# batch size
+b_s = 8
+# validation batch size
+val_b_s = 8
+# training ratio between discriminator and generator
+train_rat = 3
+
+#%% Loading data
+# Load training, validation, and testing data
+# must be in the form [slices,x,y,channels]
+if not 'x_train' in locals():
+    print('Loading data...')
+    with h5py.File(datapath,'r') as f:
+        test_MR = np.array(f.get('MR_test'))
+        test_CT = np.array(f.get('CT_test_dis'))
+        if training:
+            train_MR = np.array(f.get('MR_train'))
+            train_CT = np.array(f.get('CT_train_dis'))
+            val_MR = np.array(f.get('MR_val'))
+            val_CT = np.array(f.get('CT_val_dis'))
+        
+#%% Setup models for training
+print("Generating models...")
+from keras.optimizers import Adam
+import keras.backend as K
+
+# Discriminator models
+# CT is target
+# MR is input
+# Cycle loss is between MR to recovered MR
+DisModel_CT = Models.CycleGANdiscriminator(train_CT.shape[1:],numFilters_D,numBlocks_D)
+DisModel_MR = Models.CycleGANdiscriminator(train_MR.shape[1:],numFilters_D,numBlocks_D)
+
+# Generator Models
 GenModel_MR2CT = Models.CycleGANgenerator(train_MR.shape[1:],train_CT.shape[-1],
-                                          numFilters,numBlocks,noStride,use_bn,CT_reg)
+                                          numFilters_G,numBlocks_G,noStride,use_bn,CT_reg)
 GenModel_CT2MR = Models.CycleGANgenerator(train_CT.shape[1:],train_MR.shape[-1],
-                                          numFilters,numBlocks,noStride,use_bn,MR_reg)
+                                          numFilters_G,numBlocks_G,noStride,use_bn,MR_reg)
 
 # Endpoints of graph- MR to CT
 real_MR = GenModel_MR2CT.inputs[0]
@@ -163,23 +196,41 @@ fn_trainG = K.function([real_MR,real_CT], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trup
 # validation evaluate function
 fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 
+#%% Progress plotting function
+def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
+    MR_samp = test_MR[ex_ind,...][np.newaxis,...]
+    [CTtest,rec] = fn_genCT([MR_samp])
+    if CT_reg:
+        CTinds = np.argmax(CTtest[0],axis=-1)
+        CT_current = CTinds/CTtest.shape[-1]
+        CTinds_truth = np.argmax(test_CT[ex_ind],axis=-1)
+        CT_truth = CTinds_truth/CTtest.shape[-1]
+    else:
+        CT_current = CTtest[0,...,0]
+        CT_truth = test_CT[ex_ind,...,0]
+    if MR_reg:
+        MRinds = np.argmax(MR_samp[0],axis=-1)
+        MR_current = MRinds/test_MR.shape[-1]
+        MRinds_rec = np.argmax(rec[0],axis=-1)
+        MR_rec = MRinds_rec/rec.shape[-1]
+    else:
+        MR_current = MR_samp[0,...,0]
+        MR_rec= rec[0,...,0]    
+        
+    samp_im1 = np.c_[MR_current,CT_current]
+    samp_im2 = np.c_[MR_rec,CT_truth]
+    samp_im = np.r_[samp_im1,samp_im2]
+    ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
+    ax.set_axis_off()
+    ax.set_clip_box([0,1])
+    ax.title('Current training state')
+    plt.pause(.001)
+    plt.draw()
+    return samp_im
+
 #%% training
 print('Starting training...')
-# index of testing set to use as progress image
-ex_ind = 136
-# number of iterations (batches) to train
-numIter = 25000
-# how many steps between creating progress image
-progstep = 100
-# how many steps between checking validation score
-# and saving model
-valstep = 50
-# batch size
-b_s = 8
-# validation batch size
-val_b_s = 8
-# training ratio between discriminator and generator
-train_rat = 3
+
 # preallocate for the training and validation losses
 dis_loss = np.zeros((numIter,2))
 gen_loss = np.zeros((numIter,2))
@@ -187,24 +238,18 @@ val_loss = np.ones((np.int(numIter/valstep),2))
 templosses = np.zeros((np.int(val_MR.shape[0]/val_b_s),2))
 
 # Updatable plot
-plt.ion()
-fig, ax = plt.subplots()
-MR_samp = test_MR[ex_ind,...][np.newaxis,...]
-[test,rec] = fn_genCT([MR_samp])
-samp_im1 = np.c_[MR_samp[0,...,0],test[0,...,0]]
-samp_im2 = np.c_[rec[0,...,0],test_CT[ex_ind,...,0]]
-samp_im = np.r_[samp_im1,samp_im2]
-ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
-ax.set_axis_off()
-ax.set_clip_box([0,1])
-plt.pause(.001)
-plt.draw()
+if plot_prog:
+    plt.ion()
+    fig, ax = plt.subplots()
+    _ = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+    # preallocate image display
+    progress_ims = np.zeros((np.int(numIter/progstep),2*256,2*256))
+    gg = 0
 
 
 print('Training adversarial model')
-# preallocate image display
-progress_ims = np.zeros((np.int(numIter/progstep),2*256,2*256))
-gg = 0
+
+# validation counter
 vv = 0
 
 t = trange(numIter,file=sys.stdout)
@@ -224,18 +269,12 @@ for ii in t:
     # Train Generator
     errG = fn_trainG([MR_batch, CT_batch])
     gen_loss[ii] = errG
-    if ii % progstep == 0:
-        # progress image plotting
-        MR_samp = test_MR[ex_ind,...][np.newaxis,...]
-        [test,rec] = fn_genCT([MR_samp])
-        samp_im1 = np.c_[MR_samp[0,...,0],test[0,...,0]]
-        samp_im2 = np.c_[rec[0,...,0],test_CT[ex_ind,...,0]]
-        samp_im = np.r_[samp_im1,samp_im2]
-        progress_ims[gg] = samp_im
-        ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
-        plt.pause(.001)
-        plt.draw()
-        gg += 1
+    if plot_prog:
+        if ii % progstep == 0:
+            # progress image plotting
+            samp_im = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+            progress_ims[gg] = samp_im
+            gg += 1
     if (ii+1) % valstep ==0:
         tqdm.write('Checking validation loss...')
         for bb in range(0,templosses.shape[0]):
@@ -297,25 +336,25 @@ plt.show()
 print('Generating samples')
 from keras.models import load_model
 
-#~#~#~#~#~#~#~#~#~#~#~#~#~#
-# Load backup models
-# from keras.models import model_from_json
-#json_file = open('BackupModel_MR2CT.json', 'r')
-#loaded_model_json = json_file.read()
-#json_file.close()
-#MR2CT_Model = model_from_json(loaded_model_json)
-#MR2CT_Model.load_weights("BackupModel_MR2CT.h5")
-# from keras.models import model_from_json
-#json_file = open('BackupModel_CT2MR.json', 'r')
-#loaded_model_json = json_file.read()
-#json_file.close()
-#CT2MR_Model = model_from_json(loaded_model_json)
-#CT2MR_Model.load_weights("BackupModel_CT2MR.h5")
-#print("Loaded backup models from weights")
-#~#~#~#~#~#~#~#~#~#~#~#~#~#
-
-GenModel_MR2CT = load_model(model_filepath.format('MR2CT'),None,False)
-GenModel_CT2MR = load_model(model_filepath.format('CT2MR'),None,False)
+if False:
+    # Load backup models
+    from keras.models import model_from_json
+    json_file = open('BackupModel_MR2CT.json', 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    GenModel_MR2CT = model_from_json(loaded_model_json)
+    GenModel_MR2CT.load_weights("BackupModel_MR2CT.h5")
+    from keras.models import model_from_json
+    json_file = open('BackupModel_CT2MR.json', 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    GenModel_CT2MR = model_from_json(loaded_model_json)
+    GenModel_CT2MR.load_weights("BackupModel_CT2MR.h5")
+    print("Loaded backup models from weights")
+else:
+    # Load regular checkpointed models
+    GenModel_MR2CT = load_model(model_filepath.format('MR2CT'),None,False)
+    GenModel_CT2MR = load_model(model_filepath.format('CT2MR'),None,False)
 
 # get generator results
 time1 = time.time()
@@ -337,10 +376,11 @@ if 'progress_ims' in locals():
     images = [gif_ims[ii,...] for ii in range(gif_ims.shape[0])]
     imageio.mimsave(output_file, images, duration=1/6,loop=1)
 
-# Calculate SSIM between test images
-SSIMs = [ssim(im1,im2) for im1, im2 in zip(test_CT[...,0],CTtest[...,0])]
-print('Mean SSIM of ', np.mean(SSIMs))
-print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
+if CT_reg:
+    # Calculate SSIM between test images
+    SSIMs = [ssim(im1,im2) for im1, im2 in zip(test_CT[...,0],CTtest[...,0])]
+    print('Mean SSIM of ', np.mean(SSIMs))
+    print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
 
 # Display test images in grid
 # Input MR     | Output CT
@@ -348,15 +388,37 @@ print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs)
 # Recovered MR | Actual CT
 
 MRrec = GenModel_CT2MR.predict(CTtest)
-disp1 = np.c_[test_MR[...,0],CTtest[...,0]]
-disp2 = np.c_[MRrec[...,0],test_CT[...,0]]
-test_disp = np.concatenate((disp1,disp2),axis=1)
-multi_slice_viewer0(test_disp,'Test Images',SSIMs)
+
+if CT_reg:
+    CTinds = np.argmax(CTtest,axis=-1)
+    CT_output = CTinds/CTtest.shape[-1]
+    CTinds_truth = np.argmax(test_CT,axis=-1)
+    CT_truth = CTinds_truth/CTtest.shape[-1]
+else:
+    CT_output = CTtest[...,0]
+    CT_truth = test_CT[...,0]
+if MR_reg:
+    MRinds = np.argmax(test_MR,axis=-1)
+    MR_output = MRinds/test_MR.shape[-1]
+    MRinds_rec = np.argmax(MRrec,axis=-1)
+    MR_rec = MRinds_rec/MRrec.shape[-1]
+else:
+    MR_output = test_MR[...,0]
+    MR_rec= MRrec[...,0]
+        
+disp_im1 = np.c_[MR_output,CT_output]
+disp_im2 = np.c_[MR_rec,CT_truth]
+test_disp = np.concatenate((disp_im1,disp_im2),axis=1)
+
+if CT_reg:
+    multi_slice_viewer0(test_disp,'Test Images',SSIMs)
+else:
+    multi_slice_viewer0(test_disp,'Test Images')
 
 # Load full MR data and run inferencing for visual inspection
-with h5py.File('CycleGAN_FullMRdata.hdf5','r') as f:
-        full_MR = np.array(f.get('MR_full'))
-full_CT = GenModel_MR2CT.predict(full_MR)
-full_MRrec = GenModel_CT2MR.predict(full_CT)
-full_disp = np.concatenate((full_MR[...,0],full_CT[...,0],full_MRrec[...,0]),axis=2)
-multi_slice_viewer0(full_disp,'Full Images')
+#with h5py.File('CycleGAN_FullMRdata.hdf5','r') as f:
+#        full_MR = np.array(f.get('MR_full'))
+#full_CT = GenModel_MR2CT.predict(full_MR)
+#full_MRrec = GenModel_CT2MR.predict(full_CT)
+#full_disp = np.concatenate((full_MR[...,0],full_CT[...,0],full_MRrec[...,0]),axis=2)
+#multi_slice_viewer0(full_disp,'Full Images')
