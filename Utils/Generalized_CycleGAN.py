@@ -207,22 +207,22 @@ def ProgressPlot(test_A,test_B,ex_ind,A_reg,B_reg,ax):
     A_samp = test_A[ex_ind,...][np.newaxis,...]
     [Btest,rec] = fn_genB([A_samp])
     if B_reg:
+        B_current = Btest[0,...,0]
+        B_truth = test_B[ex_ind,...,0]
+    else:
         Binds = np.argmax(Btest[0],axis=-1)
         B_current = Binds/Btest.shape[-1]
         Binds_truth = np.argmax(test_B[ex_ind],axis=-1)
-        B_truth = Binds_truth/Btest.shape[-1]
-    else:
-        B_current = Btest[0,...,0]
-        B_truth = test_B[ex_ind,...,0]
+        B_truth = Binds_truth/Btest.shape[-1]        
     if A_reg:
+         A_current = A_samp[0,...,0]
+         A_rec= rec[0,...,0]    
+    else:
         Ainds = np.argmax(A_samp[0],axis=-1)
         A_current = Ainds/test_A.shape[-1]
         Ainds_rec = np.argmax(rec[0],axis=-1)
         A_rec = Ainds_rec/rec.shape[-1]
-    else:
-        A_current = A_samp[0,...,0]
-        A_rec= rec[0,...,0]    
-        
+       
     samp_im1 = np.c_[A_current,B_current]
     samp_im2 = np.c_[A_rec,B_truth]
     samp_im = np.r_[samp_im1,samp_im2]
