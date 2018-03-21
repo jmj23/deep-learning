@@ -382,7 +382,7 @@ if 'progress_ims' in locals():
     images = [gif_ims[ii,...] for ii in range(gif_ims.shape[0])]
     imageio.mimsave(output_file, images, duration=1/6,loop=1)
 
-if B_reg:
+if A_reg and B_reg:
     # Calculate SSIM between test images
     SSIMs = [ssim(im1,im2) for im1, im2 in zip(test_B[...,0],Btest[...,0])]
     print('Mean SSIM of ', np.mean(SSIMs))
@@ -416,7 +416,7 @@ disp_im1 = np.c_[A_output,B_output]
 disp_im2 = np.c_[A_rec,B_truth]
 test_disp = np.concatenate((disp_im1,disp_im2),axis=1)
 
-if B_reg:
+if A_reg and B_reg:
     multi_slice_viewer0(test_disp,'Test Images',SSIMs)
 else:
     multi_slice_viewer0(test_disp,'Test Images')
