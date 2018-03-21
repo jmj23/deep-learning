@@ -90,7 +90,7 @@ train_rat = 3
 #%% Loading data
 # Load training, validation, and testing data
 # must be in the form [slices,x,y,channels]
-if not 'x_train' in locals():
+if not 'test_MR' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
         test_MR = np.array(f.get('MR_test'))
@@ -201,21 +201,21 @@ def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     MR_samp = test_MR[ex_ind,...][np.newaxis,...]
     [CTtest,rec] = fn_genCT([MR_samp])
     if CT_reg:
+        CT_current = CTtest[0,...,0]
+        CT_truth = test_CT[ex_ind,...,0]
+    else:
         CTinds = np.argmax(CTtest[0],axis=-1)
         CT_current = CTinds/CTtest.shape[-1]
         CTinds_truth = np.argmax(test_CT[ex_ind],axis=-1)
         CT_truth = CTinds_truth/CTtest.shape[-1]
-    else:
-        CT_current = CTtest[0,...,0]
-        CT_truth = test_CT[ex_ind,...,0]
     if MR_reg:
+        MR_current = MR_samp[0,...,0]
+        MR_rec= rec[0,...,0]  
+    else:  
         MRinds = np.argmax(MR_samp[0],axis=-1)
         MR_current = MRinds/test_MR.shape[-1]
         MRinds_rec = np.argmax(rec[0],axis=-1)
         MR_rec = MRinds_rec/rec.shape[-1]
-    else:
-        MR_current = MR_samp[0,...,0]
-        MR_rec= rec[0,...,0]    
         
     samp_im1 = np.c_[MR_current,CT_current]
     samp_im2 = np.c_[MR_rec,CT_truth]
@@ -223,7 +223,7 @@ def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     ax.imshow(samp_im,cmap='gray',vmin=0,vmax=1)
     ax.set_axis_off()
     ax.set_clip_box([0,1])
-    ax.title('Current training state')
+    ax.set_title('Current training state')
     plt.pause(.001)
     plt.draw()
     return samp_im
