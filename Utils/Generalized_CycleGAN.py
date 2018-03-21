@@ -96,7 +96,7 @@ train_rat = 3
 #%% Loading data
 # Load training, validation, and testing data
 # must be in the form [slices,x,y,channels]
-if not 'x_train' in locals():
+if not 'test_A' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
         test_A = np.array(f.get('A_test'))
