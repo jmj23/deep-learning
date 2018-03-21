@@ -235,7 +235,7 @@ aug_class_targets = np.concatenate((class_targets,fl_class_targets,gm_class_targ
 print('Storing train data as HDF5...')
 aug_inputs = np.rot90(aug_inputs,k=1,axes=(1,2))
 aug_reg_targets = np.rot90(aug_reg_targets,k=1,axes=(1,2))
-aug_class_targets = np.rot90(aug_reg_targets,k=1,axes=(1,2))
+aug_class_targets = np.rot90(aug_class_targets,k=1,axes=(1,2))
 with h5py.File(savepath, 'a') as hf:
     hf.create_dataset("MR_train",  data=aug_inputs,dtype='f')
     hf.create_dataset("CT_train_con",  data=aug_reg_targets,dtype='f')
