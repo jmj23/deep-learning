@@ -45,7 +45,7 @@ training = True
 lrD = 1e-5  # discriminator learning rate
 lrG = 1e-5  # generator learning rate
 λ = 10  # grad penalty weighting- leave alone
-C = 500  # Cycle Loss weighting
+C = 100  # Cycle Loss weighting
 
 # Discriminator parameters
 # number of downsampling blocks
@@ -74,9 +74,9 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 500
+numIter = 20000
 # how many iterations between updating progress image
-progstep = 10
+progstep = 50
 # how many iterations between checking validation score
 # and saving model
 valstep = 100
@@ -368,7 +368,7 @@ if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
     
     # save progress ims to gif
-    output_file = 'ProgressIms.gif'
+    output_file = 'ProgressIms_discrete.gif'
     gif_ims = np.copy(progress_ims)
     gif_ims[gif_ims<0] = 0
     gif_ims[gif_ims>1] = 1
@@ -390,21 +390,21 @@ if CT_reg:
 MRrec = GenModel_CT2MR.predict(CTtest)
 
 if CT_reg:
+    CT_output = CTtest[...,0]
+    CT_truth = test_CT[...,0]
+else:
     CTinds = np.argmax(CTtest,axis=-1)
     CT_output = CTinds/CTtest.shape[-1]
     CTinds_truth = np.argmax(test_CT,axis=-1)
     CT_truth = CTinds_truth/CTtest.shape[-1]
-else:
-    CT_output = CTtest[...,0]
-    CT_truth = test_CT[...,0]
 if MR_reg:
+    MR_output = test_MR[...,0]
+    MR_rec= MRrec[...,0]
+else:
     MRinds = np.argmax(test_MR,axis=-1)
     MR_output = MRinds/test_MR.shape[-1]
     MRinds_rec = np.argmax(MRrec,axis=-1)
     MR_rec = MRinds_rec/MRrec.shape[-1]
-else:
-    MR_output = test_MR[...,0]
-    MR_rec= MRrec[...,0]
         
 disp_im1 = np.c_[MR_output,CT_output]
 disp_im2 = np.c_[MR_rec,CT_truth]
