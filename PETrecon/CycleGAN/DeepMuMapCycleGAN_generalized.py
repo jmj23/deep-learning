@@ -74,7 +74,7 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 20000
+numIter = 40000
 # how many iterations between updating progress image
 progstep = 50
 # how many iterations between checking validation score
