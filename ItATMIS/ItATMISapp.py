@@ -24,6 +24,17 @@ import nibabel as nib
 from natsort import natsorted
 import time
 import keras
+import h5py
+# Keras imports
+from keras.layers import Input, Cropping2D, Conv2D, concatenate
+from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
+from keras.layers import UpSampling2D
+from keras.layers.advanced_activations import ELU
+from keras.models import Model
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.optimizers import Adam
+import keras.backend as K
+from keras.models import load_model
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
@@ -48,6 +59,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.actionReset_View.triggered.connect(self.resetView)
             self.ui.actionUndo.triggered.connect(self.undo)
             self.ui.pb_SelectData.clicked.connect(self.DataSelect)
+            self.ui.pb_Train.clicked.connect(self.Train)
+            
+            # initialize display message
+            self.disp_msg = 'Initializing...'
             
             # initialize some variables
             # configuration file name
@@ -62,10 +77,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.images = []
             # current mask for current images
             self.mask = []
-            # prepared inputs to model
-            self.inputs = []
+            # HDF5 file of annotations
+            self.AnnotationFile = []
             # deep learning model
             self.model = []
+            self.model_path = []
             # output from CNN
             self.segOutput = []
             # spatial resolution of images
@@ -81,8 +97,14 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # set intial alpha
             self.alph = .3
             self.ui.slideAlpha.setValue(10*self.alph)
-            # initialize display message
-            self.disp_msg = 'Initializing...'
+            # Get keras graph
+            self.graph = keras.backend.tf.get_default_graph()
+            # Set keras callbacks
+            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=5,
+                                          verbose=0,mode='auto')
+            self.cb_check = []
+            # Set keras optimizer
+            self.adopt = Adam()
             
             # Initialize or load config file
             if os.path.isfile(self.configFN):
@@ -392,28 +414,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
             
     def calcFunc(self):
-        try:
-            self.calc_thread = CalcThread(self.parent.uncor_segmask,self.segmask)
-            self.calc_thread.error_sig.connect(self.calcError)
-            self.calc_thread.finished.connect(self.calcFinish)
-            self.calc_thread.calcs_sig.connect(self.calcGotCalcs)
-            
-            self.calc_thread.start()
-        except Exception as e:
-            print(e)
-            print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
-    def calcError(self,msg):
-        self.parent.error_msg = msg
-    
-    def calcGotCalcs(self,calcs):
-        self.ui.lblOTV.setText("{0:.1f} cc".format(calcs[0]))
-        self.ui.lblCTV.setText("{0:.1f} cc".format(calcs[1]))
-        self.ui.lblOUV.setText("{0:.1f} cc".format(calcs[2]))
-        self.ui.lblCUV.setText("{0:.1f} cc".format(calcs[3]))
-        self.ui.lblDiff.setText("{0:.2f} %".format(calcs[4]))
-        self.ui.lblDice.setText("{0:.2f}".format(calcs[5]))
-    def calcFinish(self):
-        pass
+        print('Calculating')
         
     def levelEvent(self,ev):
         curpos = np.array([ev.pos().x(),ev.pos().y()])
@@ -425,6 +426,62 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         newLev1 = newL+newW/2
         self.img_item.setLevels([newLev0,newLev1])
         ev.accept()
+        
+    def PrepareTargets(self):
+        if len(self.segmask) != 0:
+            self.targets = self.segmask[...,np.newaxis]
+    
+    def Train(self):
+        # Prepare current inputs and targets
+        self.disp_msg = 'Preparing data...'
+        self.PrepareData()
+        # Save or update annotations
+        if len(self.AnnotationFile) ==0:
+            # make original annotation file
+            AnnotationFile = os.path.join(self.datadir,'Annotations.h5')
+            with h5py.File(AnnotationFile,'w') as hf:
+                hf.create_dataset("targets", data=self.targets,dtype='f')
+                self.AnnotationFile = AnnotationFile
+        else:
+            # load current annotation file and append
+            with h5py.File(self.AnnotationFile,'r') as f:
+                old = np.array(f.get('targets'))
+            targets = np.concatenate((old,self.targets),axis=0)
+            with h5py.File(self.AnnotationFile,'w') as hf:
+                hf.create_dataset("targets", data=targets,dtype='f')
+        # Generate model if not existant
+        if len(self.model) ==0:
+            self.disp_msg = 'Generating model...'
+            self.model = BlockModel(self.inputs.shape)
+            self.model.compile(optimizer=self.adopt, loss=dice_loss)
+        # Set checkpoint callback if not existance
+        if len(self.cb_check) == 0:
+            self.model_path = os.path.join(self.datadir,'ItATMISmodel.h5')
+            self.cb_check = ModelCheckpoint(self.model_path,monitor='val_loss',
+                                       verbose=0,save_best_only=True,
+                                       save_weights_only=False,
+                                       mode='auto',period=1)            
+        
+        # Start Training Thread
+        self.train_thread = TrainThread(self.graph, self.model,
+                                    self.file_list, self.FNind, targets,
+                                    self.cb_eStop,self.cb_check, self.model_path)
+        self.train_thread.message_sig.connect(self.trainGotMessage)
+        self.train_thread.model_sig.connect(self.trainGotModel)
+        self.train_thread.finished.connect(self.trainFinished)
+        self.train_thread.error_sig.connect(self.trainError)
+        
+    def trainGotMessage(self, msg):
+        self.disp_msg = msg
+    
+    def trainGotModel(self, model):
+        self.model = model
+        
+    def trainFinished(self):
+        self.disp_msg = 'Ready for more annotations'
+    
+    def trainError(self, msg):
+        self.error_msg = msg
         
     def resetView(self,ev):
         self.vbox.setRange(xRange=(0,self.volshape[2]),
@@ -484,7 +541,101 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         # exit
         del self
 
+#%%
+def BlockModel(in_shape,filt_num=16,numBlocks=4):
+    input_shape = in_shape[1:]
+    lay_input = Input(shape=(input_shape),name='input_layer')
+    
+    #calculate appropriate cropping
+    mod = np.mod(input_shape[0:2],2**numBlocks)
+    padamt = mod+2
+    # calculate size reduction
+    startsize = np.max(input_shape[0:2]-padamt)
+    minsize = (startsize-np.sum(2**np.arange(1,numBlocks+1)))/2**numBlocks
+    if minsize<4:
+        numBlocks=3
+    
+    crop = Cropping2D(cropping=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_input)
 
+    # contracting block 1
+    rr = 1
+    lay_conv1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(crop)
+    lay_conv3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(crop)
+    lay_conv51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(crop)
+    lay_conv52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr))(lay_conv51)
+    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+    lay_conv_all = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
+    bn = BatchNormalization()(lay_conv_all)
+    lay_act = ELU(name='elu{}_1'.format(rr))(bn)
+    lay_stride = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
+    lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
+    act_list = [lay_act]
+    
+    # rest of contracting blocks
+    for rr in range(2,numBlocks+1):
+        lay_conv1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_act)
+        lay_conv3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(lay_act)
+        lay_conv51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(lay_act)
+        lay_conv52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr))(lay_conv51)
+        lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+        lay_conv_all = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
+        bn = BatchNormalization()(lay_conv_all)
+        lay_act = ELU(name='elu_{}'.format(rr))(bn)
+        lay_stride = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
+        lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
+        act_list.append(lay_act)
+    
+    # last expanding block
+    dd=numBlocks
+    lay_deconv1 = Conv2D(filt_num*dd,(1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_act)
+    lay_deconv3 = Conv2D(filt_num*dd,(3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_act)
+    lay_deconv51 = Conv2D(filt_num*dd, (3,3),padding='same',name='DeConv51_{}'.format(dd))(lay_act)
+    lay_deconv52 = Conv2D(filt_num*dd, (3,3),padding='same',name='DeConv52_{}'.format(dd))(lay_deconv51)
+    lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
+    lay_deconv_all = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
+    bn = BatchNormalization()(lay_deconv_all)
+    lay_act = ELU(name='elu_d{}'.format(dd))(bn)
+    
+    lay_up = UpSampling2D()(lay_act)    
+    lay_cleanup = Conv2DTranspose(filt_num*dd, (3, 3),name='cleanup{}_1'.format(dd))(lay_up)
+    lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
+    lay_cleanup = Conv2D(filt_num*dd, (3,3), padding='same', name='cleanup{}_2'.format(dd))(lay_act)
+    bn = BatchNormalization()(lay_cleanup)
+    lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
+    
+    # rest of expanding blocks
+    expnums = list(range(1,numBlocks))
+    expnums.reverse()
+    for dd in expnums:
+        lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
+        lay_deconv1 = Conv2D(filt_num*dd,(1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_skip)
+        lay_deconv3 = Conv2D(filt_num*dd,(3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_skip)
+        lay_deconv51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd))(lay_skip)
+        lay_deconv52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd))(lay_deconv51)
+        lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
+        lay_deconv_all = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
+        bn = BatchNormalization()(lay_deconv_all)
+        lay_act = ELU(name='elu_d{}'.format(dd))(bn)
+        lay_up = UpSampling2D()(lay_act)        
+        lay_cleanup = Conv2DTranspose(filt_num*dd, (3, 3),name='cleanup{}_1'.format(dd))(lay_up)
+        lay_act = ELU(name='elu_cleanup{}_1'.format(dd))(lay_cleanup)
+        lay_cleanup = Conv2D(filt_num*dd, (3,3), padding='same',name='cleanup{}_2'.format(dd))(lay_act)
+        bn = BatchNormalization()(lay_cleanup)
+        lay_act = ELU(name='elu_cleanup{}_2'.format(dd))(bn)
+        
+    lay_pad = ZeroPadding2D(padding=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_act)
+        
+    # segmenter
+    lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
+    
+    return Model(lay_input,lay_out)
+#%% Dice Coefficient Loss
+def dice_loss(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    dice = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+    return 1-dice
 #%%
 class NotMainApp(QtBaseClass1, Ui_MainWindow):
     def __init__(self):
@@ -1834,6 +1985,83 @@ class ModelLoadThread(QThread):
             print(e)
             self.error_sig.emit(e)
             print('thread error')
+            self.quit()
+#%%
+class TrainThread(QThread):
+    error_sig = pyqtSignal(str)
+    message_sig = pyqtSignal(str)
+    model_sig = pyqtSignal(keras.engine.training.Model)
+    
+    def __init__(self,graph,model,file_list,FNind,targets,
+                 CBstop,CBcheck,model_path):
+        QThread.__init__(self)
+        self.graph = graph
+        self.file_list = file_list
+        self.FNind = FNind
+        self.model = model
+        self.targets = targets
+        self.CBs = [CBstop,CBcheck]
+        self.model_path = model_path
+        
+    def __del__(self):
+        self.wait()
+
+    def run(self):
+        try:
+            # load current images
+            self.message_sig.emit('Loading inputs...')
+            # import first nifti
+            nft = nib.load(self.file_list[0])
+            # adjust orientation
+            canon_nft = nib.as_closest_canonical(nft)
+            ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+            # add axis
+            inputs = ims[...,np.newaxis]
+            # import rest of niftis, if more than 1 subject
+            if self.FNind > 0:
+                for ss in range(1,self.FNind+1):
+                    # load next subject
+                    nft = nib.load(self.file_list[ss])
+                    # adjust orientation
+                    canon_nft = nib.as_closest_canonical(nft)
+                    ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+                    # add axis and concatenate to target array
+                    inputs = np.concatenate((inputs,ims[...,np.newaxis]),axis=0)
+            
+            # check for equal sizes
+            if self.targets.shape != inputs.shape:
+                print('Targets shape is:', self.targets.shape)
+                print('Inputs shape is:', inputs.shape)
+                raise ValueError('Input and target shape do not match')
+                
+            self.message_sig.emit('Splitting data...')
+            numIm = inputs.shape[0]
+            val_inds = np.random.choice(np.arange(numIm),
+                                        np.round(.2*numIm).astype(np.int),
+                                        replace=False)
+            valX = np.take(inputs,val_inds,axis=0)
+            valY = np.take(self.targets,val_inds, axis=0)
+            trainX = np.delete(inputs, val_inds, axis=0)
+            trainY = np.delete(self.targets, val_inds, axis=0)
+            
+            self.message_sig.emit('Starting training...')
+            numEp = np.minimum(np.int(10*(self.FNind+1)),70)
+            self.model.fit(x=trainX, y=trainY, batch_size=8,
+                           epochs=numEp, shuffle=True,
+                           validation_data=(valX,valY),
+                           verbose = 0,
+                           callbacks=self.CBs)
+            self.message_sig.emit('Training Complete. Loading best model...')
+            self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
+            self.message_sig.emit('Evaluating on validation data...')
+            score = self.model.evaluate(valX,valY)
+            self.message_sig.emit('Dice Score on validation data: {}'.format(1-score[0]))
+            
+            self.model_sig.emit(self.model)
+            
+        except Exception as e:
+            print(e)
+            self.error_sig.emit(e)
             self.quit()
 #%%
 class SegThread(QThread):
