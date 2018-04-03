@@ -74,7 +74,7 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 40000
+numIter = 40
 # how many iterations between updating progress image
 progstep = 50
 # how many iterations between checking validation score
@@ -86,6 +86,10 @@ b_s = 8
 val_b_s = 8
 # training ratio between discriminator and generator
 train_rat = 3
+# Whether or not to pretrain generators
+# Leave as false if data is not aligned
+L1pretrain = False
+pretrain_epochs = 5
 
 #%% Loading data
 # Load training, validation, and testing data
@@ -195,6 +199,40 @@ fn_trainG = K.function([real_MR,real_CT], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trup
 
 # validation evaluate function
 fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
+
+#%% Optional Pretraining
+if L1pretrain:
+    # Endpoints of graph- MR to CT
+    real_MR = GenModel_MR2CT.inputs[0]
+    fake_CT = GenModel_MR2CT.outputs[0]
+    # Endpoints of graph- CT to MR
+    real_CT = GenModel_CT2MR.inputs[0]
+    fake_MR = GenModel_CT2MR.outputs[0]
+    # MR to CT generator function
+    fn_MR2CT = K.function([real_MR],[fake_CT])
+    # CT to MR generator function
+    fn_CT2MR = K.function([real_CT],[fake_MR])
+    pretrain_loss_MR2CT = K.mean(K.abs(fake_MR-real_MR))
+    pretrain_loss_CT2MR = K.mean(K.abs(fake_CT-real_CT))
+    pretrain_loss = pretrain_loss_MR2CT + pretrain_loss_CT2MR
+    pretrain_trups = Adam(lr=1e-4, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], pretrain_loss)
+    pretrain_fn = K.function([real_MR,real_CT],[pretrain_loss_MR2CT,pretrain_loss_CT2MR])
+    pre_numIter = np.int(pretrain_epochs*train_MR.shape[0])
+    pre_t = trange(pre_numIter,file=sys.stdout)
+    print('Pre-training...')
+    for ii in pre_t:
+        # get batches
+        batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
+        MR_batch = train_MR[batch_inds,...]
+        CT_batch = train_CT[batch_inds,...]
+        # Pre train Generators
+        CTerr, MRerr = pretrain_fn([MR_batch, CT_batch])
+        pre_t.set_postfix(MR2CTerror=CTerr,CT2MRerr= MRerr)
+    
+    pre_t.close()
+    del t
+    print('Pretraining complete')
+
 
 #%% Progress plotting function
 def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):

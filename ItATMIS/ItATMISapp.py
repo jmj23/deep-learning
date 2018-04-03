@@ -160,7 +160,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.volshape = images.shape
     
     def impError(self):
-        self.error_msg = 'Error import images'
+        self.error_msg = 'Error importing images'
             
     def InitDisplay(self):
         try:
@@ -434,7 +434,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def Train(self):
         # Prepare current inputs and targets
         self.disp_msg = 'Preparing data...'
-        self.PrepareData()
+        self.PrepareTargets()
         # Save or update annotations
         if len(self.AnnotationFile) ==0:
             # make original annotation file
