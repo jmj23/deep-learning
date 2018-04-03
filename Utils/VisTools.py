@@ -25,58 +25,14 @@ def showmask(im,mask):
     plt.show()
     
 #%%
-def mask_viewer(imvol,maskvol):
-    msksiz = np.r_[maskvol.shape,4]
-    msk = np.zeros(msksiz,dtype=float)
-    msk[...,0] = 1
-    msk[...,1] = 1
-    msk[...,3] = .3*maskvol.astype(float)
+def multi_slice_viewer0(volume,title='',labels=[], vrange=[0,1]):
+    # _Inputs_
+    # Volume: image volume ndarray in format [slice,rows,columns]
+    # title: string to display above images
+    # labels: list of labels to display in upper right corner of every slice
+    # must have one label per slice
+    # vrange: window range in list format: [minimum, maximum]
     
-    fig = plt.figure(figsize=(5,5))
-    fig.index = imvol.shape[2] // 2
-    imobj = plt.imshow(imvol[:,:,fig.index],cmap='gray',aspect='equal')
-    mskobj = plt.imshow(msk[:,:,fig.index,:])
-    plt.tight_layout()
-    ax = fig.axes[0]
-    ax.set_axis_off()
-    txtobj = plt.text(0.05, .95,fig.index+1, ha='left', va='top',color='red',
-                      transform=ax.transAxes)
-    fig.imvol = imvol
-    fig.maskvol = msk
-    fig.imobj = imobj
-    fig.mskobj = mskobj
-    fig.txtobj = txtobj
-    fig.canvas.mpl_connect('scroll_event',on_scroll_m)
-    
-def on_scroll_m(event):
-    fig = event.canvas.figure
-    if event.button == 'up':
-        next_slice_m(fig)
-    elif event.button == 'down':
-        previous_slice_m(fig)
-    fig.txtobj.set_text(fig.index+1)
-    fig.canvas.draw()
-    
-def previous_slice_m(fig):
-    imvol = fig.imvol
-    maskvol = fig.maskvol
-#    fig.index = (fig.index - 1) % imvol.shape[2]  # wrap around using %
-    fig.index = np.max([np.min([fig.index-1,imvol.shape[2]-1]),0])
-    fig.imobj.set_data(imvol[:,:,fig.index])
-    fig.mskobj.set_data(maskvol[:,:,fig.index,:])
-    fig.canvas.draw()
-
-def next_slice_m(fig):
-    imvol = fig.imvol
-    maskvol = fig.maskvol
-#    fig.index = (fig.index + 1) % imvol.shape[2]  # wrap around using %
-    fig.index = np.max([np.min([fig.index+1,imvol.shape[2]-1]),0])
-    fig.imobj.set_data(imvol[:,:,fig.index])
-    fig.mskobj.set_data(maskvol[:,:,fig.index,:])
-    fig.canvas.draw()
-
-#%%
-def multi_slice_viewer0(volume,title='',labels=[]):
     fig, ax = plt.subplots()
     if len(volume.shape) != 3:
         print('Volume must be 3D array')
@@ -84,7 +40,7 @@ def multi_slice_viewer0(volume,title='',labels=[]):
     ax.volume = volume
 #    ax.index = volume.shape[0] // 2
     ax.index = 0
-    ax.imshow(volume[ax.index,...],cmap='gray',vmin=0, vmax=1)
+    ax.imshow(volume[ax.index,...],cmap='gray',vmin=vrange[0], vmax=vrange[1])
     ax.set_title(title)
     ax.set_axis_off()
     txtobj = plt.text(0.05, .95,ax.index+1, ha='left', va='top',color='red',
