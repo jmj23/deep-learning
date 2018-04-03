@@ -90,6 +90,7 @@ train_rat = 3
 # Leave as false if data is not aligned
 L1pretrain = False
 pretrain_epochs = 5
+pretrain_lr = 1e-4
 
 #%% Loading data
 # Load training, validation, and testing data
@@ -200,40 +201,6 @@ fn_trainG = K.function([real_MR,real_CT], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trup
 # validation evaluate function
 fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
 
-#%% Optional Pretraining
-if L1pretrain:
-    # Endpoints of graph- MR to CT
-    real_MR = GenModel_MR2CT.inputs[0]
-    fake_CT = GenModel_MR2CT.outputs[0]
-    # Endpoints of graph- CT to MR
-    real_CT = GenModel_CT2MR.inputs[0]
-    fake_MR = GenModel_CT2MR.outputs[0]
-    # MR to CT generator function
-    fn_MR2CT = K.function([real_MR],[fake_CT])
-    # CT to MR generator function
-    fn_CT2MR = K.function([real_CT],[fake_MR])
-    pretrain_loss_MR2CT = K.mean(K.abs(fake_MR-real_MR))
-    pretrain_loss_CT2MR = K.mean(K.abs(fake_CT-real_CT))
-    pretrain_loss = pretrain_loss_MR2CT + pretrain_loss_CT2MR
-    pretrain_trups = Adam(lr=1e-4, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], pretrain_loss)
-    pretrain_fn = K.function([real_MR,real_CT],[pretrain_loss_MR2CT,pretrain_loss_CT2MR])
-    pre_numIter = np.int(pretrain_epochs*train_MR.shape[0])
-    pre_t = trange(pre_numIter,file=sys.stdout)
-    print('Pre-training...')
-    for ii in pre_t:
-        # get batches
-        batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
-        MR_batch = train_MR[batch_inds,...]
-        CT_batch = train_CT[batch_inds,...]
-        # Pre train Generators
-        CTerr, MRerr = pretrain_fn([MR_batch, CT_batch])
-        pre_t.set_postfix(MR2CTerror=CTerr,CT2MRerr= MRerr)
-    
-    pre_t.close()
-    del t
-    print('Pretraining complete')
-
-
 #%% Progress plotting function
 def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     MR_samp = test_MR[ex_ind,...][np.newaxis,...]
@@ -265,6 +232,48 @@ def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     plt.pause(.001)
     plt.draw()
     return samp_im
+
+#%% Optional Pretraining using L1 loss
+if L1pretrain:
+    # Generator pretraining losses
+    pretrain_loss_MR2CT = K.mean(K.abs(fake_MR-real_MR))
+    pretrain_loss_CT2MR = K.mean(K.abs(fake_CT-real_CT))
+    pretrain_loss = pretrain_loss_MR2CT + pretrain_loss_CT2MR
+    # Generator pretraining updates and function
+    pretrain_trups = Adam(lr=pretrain_lr, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], pretrain_loss)
+    pretrain_fn = K.function([real_MR,real_CT],[pretrain_loss_MR2CT,pretrain_loss_CT2MR],updates=pretrain_trups)
+    # calculate equivalent batches for number of epochs
+    pre_numIter = np.int(pretrain_epochs*train_MR.shape[0]/b_s)
+    # Updatable plot
+    if plot_prog:
+        plt.ion()
+        fig, ax = plt.subplots()
+        _ = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+    # setup progress bar
+    pre_t = trange(pre_numIter,file=sys.stdout)
+    print('Pre-training...')
+    for ii in pre_t:
+        # get batches
+        batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
+        MR_batch = train_MR[batch_inds,...]
+        CT_batch = train_CT[batch_inds,...]
+        # pretrain discrimators
+        ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
+        ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
+        _ = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
+        # Pre train Generators
+        CTerr, MRerr = pretrain_fn([MR_batch, CT_batch])
+        # Update progress image
+        if ii % progstep == 0:
+            _ = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+        # Print generator losses in progress bar
+        pre_t.set_postfix(MR2CTerror=CTerr,CT2MRerr= MRerr)
+        
+    pre_t.close()
+    del t
+    del ax
+    del fig
+    print('Pretraining complete')
 
 #%% training
 print('Starting training...')
@@ -299,7 +308,7 @@ for ii in t:
         MR_batch = train_MR[batch_inds,...]
         batch_inds = np.random.choice(train_CT.shape[0], b_s, replace=False)
         CT_batch = train_CT[batch_inds,...]
-        # train discrimator
+        # train discrimators
         ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
         ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
         errD  = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
