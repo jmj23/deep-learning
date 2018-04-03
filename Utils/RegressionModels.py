@@ -14,9 +14,6 @@ from keras.layers.advanced_activations import ELU
 from keras.models import Model
 import numpy as np
 
-import os
-os.environ["CUDA_DEVICE_ORDER"]= "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 def BlockModel(input_shape,filt_num=16,numBlocks=3):
     # Input shape should in the form
