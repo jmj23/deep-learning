@@ -59,12 +59,12 @@ numBlocks_G = 4
 # initial filter number
 numFilters_G = 16
 # number of blocks that have strided convolution
-noStride = 2
+noStride = 4
 # Seem to have better results with batch norm off
 use_bn = False
 # True for regression output
 # False for discrete output
-CT_reg = False
+CT_reg = True
 MR_reg = True
 
 # whether to plot progress images
@@ -74,9 +74,9 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 40
+numIter = 10000
 # how many iterations between updating progress image
-progstep = 50
+progstep = 10
 # how many iterations between checking validation score
 # and saving model
 valstep = 100
@@ -88,8 +88,8 @@ val_b_s = 8
 train_rat = 3
 # Whether or not to pretrain generators
 # Leave as false if data is not aligned
-L1pretrain = False
-pretrain_epochs = 5
+L1pretrain = True
+pretrain_epochs = 3
 pretrain_lr = 1e-4
 
 #%% Loading data
@@ -99,15 +99,15 @@ if not 'test_MR' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
         test_MR = np.array(f.get('MR_test'))
-        test_CT = np.array(f.get('CT_test_dis'))
+        test_CT = np.array(f.get('CT_test_con'))
         if training:
             train_MR = np.array(f.get('MR_train'))
-            train_CT = np.array(f.get('CT_train_dis'))
+            train_CT = np.array(f.get('CT_train_con'))
             val_MR = np.array(f.get('MR_val'))
-            val_CT = np.array(f.get('CT_val_dis'))
+            val_CT = np.array(f.get('CT_val_con'))
         
 #%% Setup models for training
-print("Generating models...")
+print("Creating models...")
 from keras.optimizers import Adam
 import keras.backend as K
 
@@ -134,6 +134,8 @@ fake_MR = GenModel_CT2MR.outputs[0]
 rec_CT = GenModel_MR2CT([fake_MR])
 # MR to CT and back generator function
 fn_genCT = K.function([real_MR],[fake_CT,rec_MR])
+fn_genCTpre = K.function([real_MR],[fake_CT])
+fn_genMRpre = K.function([real_CT],[fake_MR])
 
 # Discriminator scores
 realCTscore = DisModel_CT([real_CT])
@@ -229,6 +231,56 @@ def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     ax.set_axis_off()
     ax.set_clip_box([0,1])
     ax.set_title('Current training state')
+    plt.text(-0.02, .96,'MR input', ha='right', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.text(-0.02, 0.04,'Recovered MR', ha='right', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.text(1.02, 0.04,'CT truth', ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.text(1.02, 0.96,'CT predict', ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.pause(.001)
+    plt.draw()
+    return samp_im
+
+#%% Progress plotting function for pre-training
+def ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
+    MR_samp = test_MR[ex_ind,...][np.newaxis,...]
+    CT_samp = test_CT[ex_ind,...][np.newaxis,...]
+    [CTpre] = fn_genCTpre([MR_samp])
+    [MRpre] = fn_genMRpre([CT_samp])
+    if CT_reg:
+        CT_pre = CTpre[0,...,0]
+        CT_truth = CT_samp[0,...,0]
+    else:
+        CTinds = np.argmax(CTpre[0],axis=-1)
+        CT_pre = CTinds/CTpre.shape[-1]
+        CTinds_truth = np.argmax(CT_samp[ex_ind],axis=-1)
+        CT_truth = CTinds_truth/CT_samp.shape[-1]
+    if MR_reg:
+        MR_truth = MR_samp[0,...,0]
+        MR_pre = MRpre[0,...,0]  
+    else:  
+        MRinds = np.argmax(MR_samp[0],axis=-1)
+        MR_truth = MRinds/test_MR.shape[-1]
+        MRinds_pre = np.argmax(MRpre[0],axis=-1)
+        MR_pre = MRinds_pre/MRpre.shape[-1]
+        
+    samp_im1 = np.c_[MR_truth,MR_pre]
+    samp_im2 = np.c_[CT_pre,CT_truth]
+    samp_im = np.r_[samp_im1,samp_im2]
+    ax.imshow(samp_im,cmap='gray',vmin=np.min(samp_im),vmax=np.max(samp_im))
+    ax.set_axis_off()
+    ax.set_clip_box([0,1])
+    ax.set_title('Current pre-training state')
+    plt.text(-0.02, .96,'MR input', ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.text(-0.02, 0.04,'CT predict', ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.text(1.02, 0.04,'CT input', ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    plt.text(1.02, 0.96,'MR predict', ha='left', va='top',color='red',
+                      transform=ax.transAxes)
     plt.pause(.001)
     plt.draw()
     return samp_im
@@ -248,31 +300,32 @@ if L1pretrain:
     if plot_prog:
         plt.ion()
         fig, ax = plt.subplots()
-        _ = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+        ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+        
     # setup progress bar
     pre_t = trange(pre_numIter,file=sys.stdout)
-    print('Pre-training...')
+    tqdm.write('Pre-training...')
     for ii in pre_t:
-        # get batches
-        batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
-        MR_batch = train_MR[batch_inds,...]
-        CT_batch = train_CT[batch_inds,...]
         # pretrain discrimators
-        ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
-        ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
-        _ = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
+        for _ in range(train_rat):
+            # get batches
+            batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
+            MR_batch = train_MR[batch_inds,...]
+            CT_batch = train_CT[batch_inds,...]
+            ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
+            ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
+            _ = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
+            
         # Pre train Generators
         CTerr, MRerr = pretrain_fn([MR_batch, CT_batch])
         # Update progress image
         if ii % progstep == 0:
-            _ = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+            ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
         # Print generator losses in progress bar
         pre_t.set_postfix(MR2CTerror=CTerr,CT2MRerr= MRerr)
         
     pre_t.close()
-    del t
-    del ax
-    del fig
+    del pre_t
     print('Pretraining complete')
 
 #%% training
@@ -290,7 +343,8 @@ if plot_prog:
     fig, ax = plt.subplots()
     _ = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
     # preallocate image display
-    progress_ims = np.zeros((np.int(numIter/progstep),2*256,2*256))
+    numProgs = np.maximum(np.int(numIter/progstep),1)
+    progress_ims = np.zeros((numProgs,2*256,2*256))
     gg = 0
 
 
