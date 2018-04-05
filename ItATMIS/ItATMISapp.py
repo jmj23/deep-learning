@@ -19,11 +19,10 @@ try:
 except RuntimeError as e:
     print('No GPU available')
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
-import psutil
+    
 import configparser
 import nibabel as nib
 from natsort import natsorted
-import time
 import keras
 import h5py
 # Keras imports
@@ -105,6 +104,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                                           verbose=0,mode='auto')
             self.cb_check = []
             # Set keras optimizer
+            keras.backend.tf.reset_default_graph()
+            keras.backend.clear_session()
             self.adopt = Adam()
             
             # Initialize or load config file
@@ -405,7 +406,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.DataSelectW.show()
         
     def ImportImages(self,segAfter):
-        self.disp_msg = "Importing subject {}...".format(self.FNind)
+        self.disp_msg = "Importing subject {}...".format(self.FNind+1)
         curFN = self.file_list[self.FNind]
         self.ui.progBar.setVisible(True)
         self.ui.progBar.setRange(0,0)
@@ -450,14 +451,14 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         
     def seg_finish(self):
         self.disp_msg = 'Segmentation complete'
-        self.img_item.setImage(self.images[self.ind,...],autoLevels=False)
-        self.msk_item.setImage(self.mask[self.ind,...])
-        self.mask[...,3] = self.alph*self.segmask
         self.ui.progBar.setRange(0,1)
-        self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
         QtWidgets.QApplication.restoreOverrideCursor()
         self.ui.viewAxial.setEnabled(True)
+        self.img_item.setImage(self.images[self.ind,...],autoLevels=False)
+        self.msk_item.setImage(self.mask[self.ind,...])
+        self.mask[...,3] = self.alph*self.segmask
+        
     
     def seg_gotmask(self,mask):
         self.segmask = mask
@@ -502,14 +503,15 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 with h5py.File(self.AnnotationFile,'w') as hf:
                     hf.create_dataset("targets", data=self.targets,dtype='f')
             # Generate model if not existant
-            if self.model == []:
-                keras.backend.clear_session()
+            if self.model == []:                
                 self.disp_msg = 'Generating model...'
-                self.model = BlockModel(self.images.shape)
+                self.graph = keras.backend.tf.get_default_graph()
+                with self.graph.as_default():
+                    self.model = BlockModel(self.images.shape)
                 self.model.compile(optimizer=self.adopt, loss=dice_loss)
                 
             # Set checkpoint callback if not already set
-            if len(self.cb_check) == 0:
+            if self.cb_check == []:
                 print('Making callback...')
                 self.model_path = os.path.join(self.datadir,'ItATMISmodel.h5')
                 self.cb_check = ModelCheckpoint(self.model_path,monitor='val_loss',
@@ -920,21 +922,25 @@ class TrainThread(QThread):
             self.CBs = self.CBs + [progCB]
             
             self.message_sig.emit('Training model...')
-            self.model.fit(x=trainX, y=trainY, batch_size=batchSize,
+            with self.graph.as_default():
+                self.model.fit(x=trainX, y=trainY, batch_size=batchSize,
                        epochs=numEp, shuffle=True,
                        validation_data=(valX,valY),
                        verbose = 0,
                        callbacks=self.CBs)
                 
             keras.backend.clear_session()
+            keras.backend.tf.reset_default_graph()
                 
             self.message_sig.emit('Training Complete.')
             self.message_sig.emit('Loading best model...')
-            self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
             graph = keras.backend.tf.get_default_graph()
+            with graph.as_default():
+                self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
+            
             
             self.message_sig.emit('Evaluating on validation data...')
-            score = self.model.evaluate(valX,valY)
+            score = self.model.evaluate(valX,valY,verbose=0)
             self.message_sig.emit('Dice Score: {:.2f}'.format(1-score))
             
             self.model_sig.emit(self.model, graph)
@@ -950,6 +956,8 @@ class ProgressCallback(keras.callbacks.Callback):
         return
 
     def on_epoch_end(self, epoch, logs={}):
+        self.progress = self.progress + self.batchpercent
+        self.thread.batch_sig.emit(int(self.progress))
         return
     
     def on_batch_end(self, batch, logs={}):
