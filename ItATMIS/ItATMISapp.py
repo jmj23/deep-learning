@@ -25,6 +25,7 @@ import nibabel as nib
 from natsort import natsorted
 import keras
 import h5py
+import time
 # Keras imports
 from keras.layers import Input, Cropping2D, Conv2D, concatenate
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
@@ -437,6 +438,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.progBar.setRange(0,1)
             self.ui.progBar.setTextVisible(False)
             self.ui.progBar.setVisible(False)
+            time.sleep(.1)
             QtWidgets.QApplication.restoreOverrideCursor()
             self.ui.viewAxial.setEnabled(True)
             self.InitDisplay()
@@ -928,7 +930,9 @@ class TrainThread(QThread):
                        validation_data=(valX,valY),
                        verbose = 0,
                        callbacks=self.CBs)
-                
+            
+            self.batch_sig.emit(100)    
+            
             keras.backend.clear_session()
             keras.backend.tf.reset_default_graph()
                 
