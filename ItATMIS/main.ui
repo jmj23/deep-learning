@@ -21,7 +21,7 @@
   </property>
   <property name="windowIcon">
    <iconset>
-    <normaloff>uw_icon.gif</normaloff>uw_icon.gif</iconset>
+    <normaloff>../../.designer/backup/uw_icon.gif</normaloff>../../.designer/backup/uw_icon.gif</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout" columnstretch="0,0,0">
@@ -396,7 +396,7 @@
           <number>1</number>
          </property>
          <property name="maximum">
-          <number>20</number>
+          <number>30</number>
          </property>
          <property name="pageStep">
           <number>1</number>
@@ -765,8 +765,8 @@
    </property>
    <property name="icon">
     <iconset>
-     <normaloff>Saved.png</normaloff>
-     <normalon>Save.png</normalon>Saved.png</iconset>
+     <normaloff>../../.designer/backup/Saved.png</normaloff>
+     <normalon>../../.designer/backup/Save.png</normalon>../../.designer/backup/Saved.png</iconset>
    </property>
    <property name="text">
     <string>Save Model</string>
@@ -784,7 +784,7 @@
   <action name="actionReset_View">
    <property name="icon">
     <iconset>
-     <normaloff>ResetView.png</normaloff>ResetView.png</iconset>
+     <normaloff>../../.designer/backup/ResetView.png</normaloff>../../.designer/backup/ResetView.png</iconset>
    </property>
    <property name="text">
     <string>Reset View</string>
@@ -799,7 +799,7 @@
   <action name="actionUndo">
    <property name="icon">
     <iconset>
-     <normaloff>Undo_icon_png.png</normaloff>Undo_icon_png.png</iconset>
+     <normaloff>../../.designer/backup/Undo_icon_png.png</normaloff>../../.designer/backup/Undo_icon_png.png</iconset>
    </property>
    <property name="text">
     <string>Undo</string>
