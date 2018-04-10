@@ -149,6 +149,81 @@ def next_slice_m0(fig):
     fig.mskobj.set_data(maskvol[fig.index,:,:,:])
     fig.canvas.draw()
 #%%
+def slice_viewer4D(volume,title='', vrange=[0,1]):
+    # _Inputs_
+    # Volume: image volume 4D ndarray in format [time,slices,rows,columns]
+    # title: string to display above images
+    # labels: list of labels to display in upper right corner of every slice
+    # must have one label per slice
+    # vrange: window range in list format: [minimum, maximum]
+    
+    fig, ax = plt.subplots()
+    if len(volume.shape) != 4:
+        print('Volume must be 4D array')
+        return
+    ax.volume = volume
+#    ax.index = volume.shape[0] // 2
+    ax.index = [0,0]
+    ax.imshow(volume[ax.index[0],ax.index[0],...],cmap='gray',vmin=vrange[0], vmax=vrange[1])
+    ax.set_title(title)
+    ax.set_axis_off()
+    txtobj = plt.text(0.05, .95,ax.index[1]+1, ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    ax.txtobj = txtobj
+    txtobj2 = plt.text(0.05, 0.05,ax.index[0], ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    ax.txtobj2 = txtobj2
+    
+    fig.canvas.mpl_connect('key_press_event', process_key4D)
+    fig.canvas.mpl_connect('scroll_event',on_scroll4D)
+
+def process_key4D(event):
+    fig = event.canvas.figure
+    ax = fig.axes[0]
+    if event.key == 'down':
+        previous_slice4D(ax)
+    elif event.key == 'up':
+        next_slice4D(ax)
+    elif event.key == 'left':
+        prev_time4D(ax)
+    elif event.key == 'right':
+        next_time4D(ax)
+    fig.canvas.draw()
+    
+def on_scroll4D(event):
+    fig = event.canvas.figure
+    ax = fig.axes[0]
+    if event.button == 'up':
+        next_slice4D(ax)
+    elif event.button == 'down':
+        previous_slice4D(ax)
+    fig.canvas.draw()
+
+def previous_slice4D(ax):
+    volume = ax.volume
+    ax.index[1] = np.max([np.min([ax.index[1] - 1,volume.shape[1]-1]),0])
+    ax.images[0].set_array(volume[ax.index[0],ax.index[1],...])
+    ax.txtobj.set_text(ax.index[1]+1)
+
+def next_slice4D(ax):
+    volume = ax.volume
+    ax.index[1] = np.max([np.min([ax.index[1] + 1,volume.shape[1]-1]),0])
+    ax.images[0].set_array(volume[ax.index[0],ax.index[1],...])
+    ax.txtobj.set_text(ax.index[1]+1)
+        
+def prev_time4D(ax):
+    volume = ax.volume
+    ax.index[0] = np.max([np.min([ax.index[0] - 1,volume.shape[0]-1]),0])
+    ax.images[0].set_array(volume[ax.index[0],ax.index[1],...])
+    ax.txtobj2.set_text(ax.index[0])
+
+def next_time4D(ax):
+    volume = ax.volume
+    ax.index[0] = np.max([np.min([ax.index[0] + 1,volume.shape[0]-1]),0])
+    ax.images[0].set_array(volume[ax.index[0],ax.index[1],...])
+    ax.txtobj2.set_text(ax.index[0])
+    
+#%%
 def registration_viewer(fixed,moving,alpha=.5,name='Registration Results'):
     msksiz = np.r_[moving.shape,4]
     msk = np.zeros(msksiz,dtype=float)
