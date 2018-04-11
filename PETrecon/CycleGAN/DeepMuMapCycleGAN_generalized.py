@@ -89,6 +89,7 @@ train_rat = 3
 # Whether or not to pretrain generators
 # Leave as false if data is not aligned
 L1pretrain = True
+Dpretrain = False
 pretrain_epochs = 3
 pretrain_lr = 1e-4
 
@@ -273,9 +274,9 @@ def ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     ax.set_axis_off()
     ax.set_clip_box([0,1])
     ax.set_title('Current pre-training state')
-    plt.text(-0.02, .96,'MR input', ha='left', va='top',color='red',
+    plt.text(-0.02, .96,'MR input', ha='right', va='top',color='red',
                       transform=ax.transAxes)
-    plt.text(-0.02, 0.04,'CT predict', ha='left', va='top',color='red',
+    plt.text(-0.02, 0.04,'CT predict', ha='right', va='top',color='red',
                       transform=ax.transAxes)
     plt.text(1.02, 0.04,'CT input', ha='left', va='top',color='red',
                       transform=ax.transAxes)
@@ -301,26 +302,37 @@ if L1pretrain:
         plt.ion()
         fig, ax = plt.subplots()
         ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+        # preallocate image display
+        numProgs = np.maximum(np.int(pre_numIter/progstep),1)
+        pre_progress_ims = np.zeros((numProgs,2*256,2*256))
+        pg = 0
         
     # setup progress bar
     pre_t = trange(pre_numIter,file=sys.stdout)
     tqdm.write('Pre-training...')
     for ii in pre_t:
-        # pretrain discrimators
-        for _ in range(train_rat):
+        if Dpretrain:
+            # pretrain discrimators
+            for _ in range(train_rat):
+                # get batches
+                batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
+                MR_batch = train_MR[batch_inds,...]
+                CT_batch = train_CT[batch_inds,...]
+                ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
+                ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
+                _ = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
+        else:
             # get batches
             batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
             MR_batch = train_MR[batch_inds,...]
             CT_batch = train_CT[batch_inds,...]
-            ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
-            ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
-            _ = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
-            
         # Pre train Generators
         CTerr, MRerr = pretrain_fn([MR_batch, CT_batch])
         # Update progress image
         if ii % progstep == 0:
-            ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+            samp_im = ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+            pre_progress_ims[pg] = samp_im
+            pg += 1
         # Print generator losses in progress bar
         pre_t.set_postfix(MR2CTerror=CTerr,CT2MRerr= MRerr)
         
@@ -467,6 +479,8 @@ print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
 if 'progress_ims' in locals():
     multi_slice_viewer0(progress_ims,'Training Progress Images')
+    if L1pretrain:
+        multi_slice_viewer0(pre_progress_ims,'PreTraining Progress Images')
     
     # save progress ims to gif
     output_file = 'ProgressIms_discrete.gif'
