@@ -102,7 +102,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.graph = []
             # Set keras callbacks
             self.cb_eStop = EarlyStopping(monitor='val_loss',patience=5,
-                                          verbose=0,mode='auto')
+                                          verbose=1,mode='auto')
             self.cb_check = []
             # Set keras optimizer
             keras.backend.tf.reset_default_graph()
@@ -912,7 +912,7 @@ class TrainThread(QThread):
             trainY = np.delete(self.targets, val_inds, axis=0)
             
             # calculate number of epochs and batches
-            numEp = np.minimum(np.int(1*(self.FNind+1)),70)
+            numEp = np.maximum(30,np.minimum(np.int(10*(self.FNind+1)),80))
             batchSize = 8
             numBatches = trainX.shape[0]*numEp/batchSize
             
@@ -928,7 +928,7 @@ class TrainThread(QThread):
                 self.model.fit(x=trainX, y=trainY, batch_size=batchSize,
                        epochs=numEp, shuffle=True,
                        validation_data=(valX,valY),
-                       verbose = 0,
+                       verbose=1,
                        callbacks=self.CBs)
             
             self.batch_sig.emit(100)    
