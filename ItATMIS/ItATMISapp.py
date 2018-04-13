@@ -7,7 +7,6 @@ import pyqtgraph as pg
 import numpy as np
 from scipy.ndimage import median_filter
 from scipy.ndimage.morphology import binary_fill_holes
-from skimage.draw import polygon
 import os
 # Use first available GPU
 import GPUtil
@@ -36,6 +35,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.optimizers import Adam
 import keras.backend as K
 from keras.models import load_model
+from keras.preprocessing.image import ImageDataGenerator
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
@@ -59,6 +59,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
 #            self.ui.actionSaveModel.triggered.connect(self.saveCor)
             self.ui.actionReset_View.triggered.connect(self.resetView)
             self.ui.actionUndo.triggered.connect(self.undo)
+            self.ui.actionClear_Mask.triggered.connect(self.clearMask)
+            self.ui.action_Save_Data.triggered.connect(self.data_save)
             self.ui.pb_SelectData.clicked.connect(self.DataSelect)
             self.ui.pb_Train.clicked.connect(self.Train)
             
@@ -105,9 +107,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                                           verbose=1,mode='auto')
             self.cb_check = []
             # Set keras optimizer
+            self.adopt = Adam()
             keras.backend.tf.reset_default_graph()
             keras.backend.clear_session()
-            self.adopt = Adam()
             
             # Initialize or load config file
             if os.path.isfile(self.configFN):
@@ -136,6 +138,40 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
+            
+            
+    def data_save(self,*args):
+        if self.saved:
+            self.disp_msg = 'No new changes'
+            return
+        try:
+#            w = QtWidgets.QWidget()
+#            if len(self.savename)==0:
+#                suggest = os.path.join(self.datadir,'SegData.mat')
+#            else:
+#                suggest = suggest = os.path.join(self.savedir,self.savename)
+#            save_path = QtWidgets.QFileDialog.getSaveFileName(w,'Save Data',suggest,"MAT file (*.mat)")
+#            
+#            if len(save_path[0])==0:
+#                return
+            try:
+                self.disp_msg = 'Saving data...'
+                TrainingFile = 'TrainingData.h5'
+                with h5py.File(TrainingFile,'r') as hf:
+                    hf.create_dataset("images",data=self.images,dtype='f')
+                    hf.create_dataset("segmask",data=self.segmask,dtype='f')
+                    
+#                a['segfile'] = True
+#                spio.savemat(save_path[0],a)
+                    
+                self.saved = True
+                self.disp_msg = 'Data saved'
+            except Exception as e:
+                self.error_msg = 'Error saving data'
+                print(e)
+                print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
+        except Exception as e:
+            print(e)
             
     def InitDisplay(self):
         try:
@@ -259,12 +295,23 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def vbKeyPress(self,ev):
         try:
             ev.accept()
+            print(ev.text())
             if ev.text() == ']':
                 curval = self.ui.slideBrushSize.value()
                 self.ui.slideBrushSize.setValue(curval+1)
             elif ev.text() == '[':
                 curval = self.ui.slideBrushSize.value()
                 self.ui.slideBrushSize.setValue(curval-1)
+            elif ev.text() == '=':
+                curval = self.ui.slideAx.vale()
+                newval = np.int16(np.clip(curval+1,0,
+                             self.volshape[0]-1))
+                self.ui.slideAx.setValue(newval)
+            elif ev.text() == '-':
+                curval = self.ui.slideAx.vale()
+                newval = np.int16(np.clip(curval-1,0,
+                             self.volshape[0]-1))
+                self.ui.slideAx.setValue(newval)
             else:
                 ev.ignore()
         except Exception as e:
@@ -369,6 +416,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def updateMask(self):
         self.mask[...,3] = self.alph*self.segmask
         self.msk_item.setImage(self.mask[self.ind,...])
+        self.saved = False
         
     def showUncorMask(self):
         if self.ui.buttonUncorMask.checked:
@@ -387,6 +435,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
+            
+    def clearMask(self):
+        self.disp_msg = 'Current mask cleared'
             
     def calcFunc(self):
         print('Calculating')
@@ -568,7 +619,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setValue(num)
         
         
-        
     def EvalNextSubject(self):
         self.FNind = self.FNind + 1
         self.ImportImages(True)
@@ -614,6 +664,18 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.listDisp.update()
         print('Error:',value)
         QtWidgets.qApp.processEvents()
+    
+    @pyqtProperty(bool)
+    def saved(self):
+            return self._saved
+    @saved.setter
+    def saved(self, value):
+        self._saved = value
+        if value:
+            self.ui.action_Save_Data.setEnabled(False)
+        else:
+            self.ui.action_Save_Data.setEnabled(True)
+        QtWidgets.qApp.processEvents()
         
     def closeEvent(self, ev):
         # check to quit
@@ -630,7 +692,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.saveConfig()
         
         # kill threads
-        self.train_thread.quit()
+        try:
+            self.train_thread.quit()
+        except Exception as e:
+            pass
         # exit
         del self
 
@@ -778,6 +843,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
                 self.ui.list_files.addItem(item)
                 
             self.FNs = FNs
+            self.dirName = dirName
             self.ui.list_files.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
             self.ui.list_files.customContextMenuRequested.connect(self.contextMenu)
             
@@ -793,13 +859,14 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
                     self.ui.list_files.takeItem(self.ui.list_files.row(item))
                     FNs = []
                     for index in range(self.ui.list_files.count()):
-                         FNs.append(self.ui.list_files.item(index).text())
+                         FNs.append(os.path.join(self.dirName,self.ui.list_files.item(index).text()))
                     self.FNs = FNs
         except Exception as e:
             print(e)
             
     def setSelect(self):
         self.parent.file_list = self.FNs
+        print(self.FNs)
             
         self.parent.disp_msg = 'Files selected'
         self.parent.saved = False
@@ -910,6 +977,52 @@ class TrainThread(QThread):
             valY = np.take(self.targets,val_inds, axis=0)
             trainX = np.delete(inputs, val_inds, axis=0)
             trainY = np.delete(self.targets, val_inds, axis=0)
+            
+            # save training data for testing
+            TrainingFile = 'TrainingData.h5'
+            with h5py.File(TrainingFile,'w') as hf:
+                hf.create_dataset("trainX", data=trainX,dtype='f')
+                hf.create_dataset("trainY",data=trainY,dtype='f')
+                hf.create_dataset("valX",data=valX,dtype='f')
+                hf.create_dataset("valY",data=valY,dtype='f')
+            raise ValueError('Saved training data')
+            
+            # setup image data generator
+            datagen1 = ImageDataGenerator(
+                rotation_range=15,
+                shear_range=10,
+                width_shift_range=0.33,
+                height_shift_range=0.33,
+                zoom_range=0.33,
+                horizontal_flip=True,
+                vertical_flip=True,
+                fill_mode='nearest')
+            datagen2 = ImageDataGenerator(
+                rotation_range=15,
+                shear_range=10,
+                width_shift_range=0.33,
+                height_shift_range=0.33,
+                zoom_range=0.33,
+                horizontal_flip=True,
+                vertical_flip=True,
+                fill_mode='nearest')
+     
+            # Provide the same seed and keyword arguments to the fit and flow methods
+            seed = 1
+            datagen1.fit(img1, seed=seed)
+            datagen2.fit(img2, seed=seed)
+     
+            batchsize = 24
+            num_epochs = 200
+     
+            datagen = zip( datagen1.flow( img1, None, batchsize, seed=seed), datagen2.flow( img2, None, batchsize, seed=seed) )
+     
+            print('-'*50)
+            print('Fitting network...')
+            print('-'*50)
+     
+            model.fit_generator( datagen, steps_per_epoch=300, epochs=num_epochs, callbacks=[model_checkpoint,tensorboard] )
+
             
             # calculate number of epochs and batches
             numEp = np.maximum(30,np.minimum(np.int(10*(self.FNind+1)),80))
