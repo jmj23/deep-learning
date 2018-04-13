@@ -51,7 +51,7 @@ C = 100  # Cycle Loss weighting
 # number of downsampling blocks
 numBlocks_D = 3
 # initial filter number
-numFilters_D = 32
+numFilters_D = 16
 
 # Generator Parameters
 # number of downsampling blocks
@@ -74,9 +74,9 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 5000
+numIter = 50000
 # how many iterations between updating progress image
-progstep = 10
+progstep = 50
 # how many iterations between checking validation score
 # and saving model
 valstep = 100
@@ -88,9 +88,9 @@ val_b_s = 8
 train_rat = 5
 # Whether or not to pretrain generators
 # Leave as false if data is not aligned
-L1pretrain = True
+L1pretrain = False
 Dpretrain = False
-pretrain_epochs = 10
+pretrain_epochs = 1
 pretrain_lr = 1e-4
 
 #%% Loading data
@@ -195,7 +195,7 @@ D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(weights_D,[],loss_D)
 fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2],[loss_CT, loss_MR], D_trups)
 
 # Generator Training function
-loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR + C*loss_CT2MR2CT
+loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR + 0*loss_CT2MR2CT
 weights_G = GenModel_MR2CT.trainable_weights + GenModel_CT2MR.trainable_weights
 MR2CT_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], loss_G)
 # Generator training function returns MR2CT discriminator loss and MR2CT2MR cycle loss
@@ -289,8 +289,8 @@ def ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
 #%% Optional Pretraining using L1 loss
 if L1pretrain:
     # Generator pretraining losses
-    pretrain_loss_MR2CT = K.mean(K.abs(fake_MR-real_MR))
-    pretrain_loss_CT2MR = K.mean(K.abs(fake_CT-real_CT))
+    pretrain_loss_CT2MR = K.mean(K.abs(fake_MR-real_MR))
+    pretrain_loss_MR2CT = K.mean(K.abs(fake_CT-real_CT))
     pretrain_loss = pretrain_loss_MR2CT + pretrain_loss_CT2MR
     # Generator pretraining updates and function
     pretrain_trups = Adam(lr=pretrain_lr, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], pretrain_loss)
