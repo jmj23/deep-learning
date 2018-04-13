@@ -74,7 +74,7 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 10000
+numIter = 5000
 # how many iterations between updating progress image
 progstep = 10
 # how many iterations between checking validation score
@@ -85,12 +85,12 @@ b_s = 8
 # validation batch size
 val_b_s = 8
 # training ratio between discriminator and generator
-train_rat = 3
+train_rat = 5
 # Whether or not to pretrain generators
 # Leave as false if data is not aligned
 L1pretrain = True
 Dpretrain = False
-pretrain_epochs = 3
+pretrain_epochs = 10
 pretrain_lr = 1e-4
 
 #%% Loading data
@@ -304,7 +304,7 @@ if L1pretrain:
         ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
         # preallocate image display
         numProgs = np.maximum(np.int(pre_numIter/progstep),1)
-        pre_progress_ims = np.zeros((numProgs,2*256,2*256))
+        pre_progress_ims = np.zeros((numProgs+1,2*256,2*256))
         pg = 0
         
     # setup progress bar
@@ -477,13 +477,13 @@ print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
 # Display progress images, if they exist
 
-if 'progress_ims' in locals():
-    multi_slice_viewer0(progress_ims,'Training Progress Images')
+if plot_prog:
     if L1pretrain:
-        multi_slice_viewer0(pre_progress_ims,'PreTraining Progress Images')
+        progress_ims = np.concatenate((pre_progress_ims,progress_ims),axis=0)
+    multi_slice_viewer0(progress_ims,'Training Progress Images')
     
     # save progress ims to gif
-    output_file = 'ProgressIms_discrete.gif'
+    output_file = 'ProgressIms.gif'
     gif_ims = np.copy(progress_ims)
     gif_ims[gif_ims<0] = 0
     gif_ims[gif_ims>1] = 1
