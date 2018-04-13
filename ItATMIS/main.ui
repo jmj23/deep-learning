@@ -751,9 +751,10 @@
    </attribute>
    <addaction name="actionReset_View"/>
    <addaction name="actionUndo"/>
-   <addaction name="actionSaveModel"/>
+   <addaction name="action_Save_Data"/>
+   <addaction name="actionClear_Mask"/>
   </widget>
-  <action name="actionSaveModel">
+  <action name="action_Save_Data">
    <property name="checkable">
     <bool>false</bool>
    </property>
@@ -765,14 +766,14 @@
    </property>
    <property name="icon">
     <iconset>
-     <normaloff>../../.designer/backup/Saved.png</normaloff>
-     <normalon>../../.designer/backup/Save.png</normalon>../../.designer/backup/Saved.png</iconset>
+     <normaloff>Save.png</normaloff>
+     <normalon>Saved.png</normalon>Save.png</iconset>
    </property>
    <property name="text">
-    <string>Save Model</string>
+    <string>Save Data</string>
    </property>
    <property name="toolTip">
-    <string>Save Model to File</string>
+    <string>Save All Data to File</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+S</string>
@@ -784,7 +785,7 @@
   <action name="actionReset_View">
    <property name="icon">
     <iconset>
-     <normaloff>../../.designer/backup/ResetView.png</normaloff>../../.designer/backup/ResetView.png</iconset>
+     <normaloff>ResetView.png</normaloff>ResetView.png</iconset>
    </property>
    <property name="text">
     <string>Reset View</string>
@@ -799,7 +800,7 @@
   <action name="actionUndo">
    <property name="icon">
     <iconset>
-     <normaloff>../../.designer/backup/Undo_icon_png.png</normaloff>../../.designer/backup/Undo_icon_png.png</iconset>
+     <normaloff>Undo_icon_png.png</normaloff>Undo_icon_png.png</iconset>
    </property>
    <property name="text">
     <string>Undo</string>
@@ -809,6 +810,18 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Z</string>
+   </property>
+  </action>
+  <action name="actionClear_Mask">
+   <property name="icon">
+    <iconset>
+     <normaloff>ClearAll.png</normaloff>ClearAll.png</iconset>
+   </property>
+   <property name="text">
+    <string>Clear Mask</string>
+   </property>
+   <property name="toolTip">
+    <string>Clear the current mask</string>
    </property>
   </action>
  </widget>
