@@ -100,6 +100,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # set intial alpha
             self.alph = .3
             self.ui.slideAlpha.setValue(10*self.alph)
+            self.vbox = []
             # keras graph
             self.graph = []
             # Set keras callbacks
@@ -157,7 +158,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             try:
                 self.disp_msg = 'Saving data...'
                 TrainingFile = 'TrainingData.h5'
-                with h5py.File(TrainingFile,'r') as hf:
+                with h5py.File(TrainingFile,'w') as hf:
                     hf.create_dataset("images",data=self.images,dtype='f')
                     hf.create_dataset("segmask",data=self.segmask,dtype='f')
                     
@@ -190,10 +191,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             
             # setup plots
             asprat1 = 1
-            self.vbox = self.ui.viewAxial.addViewBox(border=None,
+            if self.vbox == []:
+                self.vbox = self.ui.viewAxial.addViewBox(border=None,
                                                     enableMenu=False,
                                                     enableMouse=False,
                                                     invertY=True)
+        
             self.vbox.setAspectLocked(True,ratio=asprat1)
             self.img_item = pg.ImageItem()
             self.vbox.addItem(self.img_item)
@@ -295,7 +298,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def vbKeyPress(self,ev):
         try:
             ev.accept()
-            print(ev.text())
             if ev.text() == ']':
                 curval = self.ui.slideBrushSize.value()
                 self.ui.slideBrushSize.setValue(curval+1)
@@ -303,12 +305,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 curval = self.ui.slideBrushSize.value()
                 self.ui.slideBrushSize.setValue(curval-1)
             elif ev.text() == '=':
-                curval = self.ui.slideAx.vale()
+                curval = self.ui.slideAx.value()
                 newval = np.int16(np.clip(curval+1,0,
                              self.volshape[0]-1))
                 self.ui.slideAx.setValue(newval)
             elif ev.text() == '-':
-                curval = self.ui.slideAx.vale()
+                curval = self.ui.slideAx.value()
                 newval = np.int16(np.clip(curval-1,0,
                              self.volshape[0]-1))
                 self.ui.slideAx.setValue(newval)
@@ -437,7 +439,19 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
             
     def clearMask(self):
-        self.disp_msg = 'Current mask cleared'
+        # check to quit
+        quit_msg = "Are you sure you wish to clear the full 3D mask?"
+        reply = QtWidgets.QMessageBox.warning(self, 'Clear Mask', 
+                         quit_msg, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
+    
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.segmask = np.zeros_like(self.segmask)
+            self.mask[...,3] = self.alph*self.segmask
+            self.msk_item.setImage(self.mask[self.ind,...])
+            self.saved = False
+            self.disp_msg = 'Current mask cleared'
+        return        
+        
             
     def calcFunc(self):
         print('Calculating')
@@ -865,9 +879,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             print(e)
             
     def setSelect(self):
-        self.parent.file_list = self.FNs
-        print(self.FNs)
-            
+        self.parent.file_list = self.FNs            
         self.parent.disp_msg = 'Files selected'
         self.parent.saved = False
         self.hide()
@@ -990,59 +1002,50 @@ class TrainThread(QThread):
             # setup image data generator
             datagen1 = ImageDataGenerator(
                 rotation_range=15,
-                shear_range=10,
-                width_shift_range=0.33,
-                height_shift_range=0.33,
-                zoom_range=0.33,
+                shear_range=0.5,
+                width_shift_range=0.1,
+                height_shift_range=0.1,
+                zoom_range=0.2,
                 horizontal_flip=True,
                 vertical_flip=True,
                 fill_mode='nearest')
             datagen2 = ImageDataGenerator(
                 rotation_range=15,
-                shear_range=10,
-                width_shift_range=0.33,
-                height_shift_range=0.33,
-                zoom_range=0.33,
+                shear_range=0.5,
+                width_shift_range=0.1,
+                height_shift_range=0.1,
+                zoom_range=0.2,
                 horizontal_flip=True,
                 vertical_flip=True,
                 fill_mode='nearest')
      
             # Provide the same seed and keyword arguments to the fit and flow methods
             seed = 1
-            datagen1.fit(img1, seed=seed)
-            datagen2.fit(img2, seed=seed)
-     
-            batchsize = 24
-            num_epochs = 200
-     
-            datagen = zip( datagen1.flow( img1, None, batchsize, seed=seed), datagen2.flow( img2, None, batchsize, seed=seed) )
-     
-            print('-'*50)
-            print('Fitting network...')
-            print('-'*50)
-     
-            model.fit_generator( datagen, steps_per_epoch=300, epochs=num_epochs, callbacks=[model_checkpoint,tensorboard] )
-
+            datagen1.fit(trainX, seed=seed)
+            datagen2.fit(trainY, seed=seed)
+            batchsize = 16
+            datagen = zip( datagen1.flow( trainX, None, batchsize, seed=seed), datagen2.flow( trainY, None, batchsize, seed=seed) )
             
             # calculate number of epochs and batches
-            numEp = np.maximum(30,np.minimum(np.int(10*(self.FNind+1)),80))
-            batchSize = 8
-            numBatches = trainX.shape[0]*numEp/batchSize
+            numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
+            steps = np.int(trainX.shape[0]/batchsize*2)
+#            numBatches = trainX.shape[0]*numEp/batchsize
+            numSteps = steps*numEp
             
             # Make progress callback
             progCB = ProgressCallback()
             progCB.thread = self
             progCB.progress = 0
-            progCB.batchpercent = 100/numBatches
+            progCB.batchpercent = 100/numSteps
             self.CBs = self.CBs + [progCB]
             
             self.message_sig.emit('Training model...')
             with self.graph.as_default():
-                self.model.fit(x=trainX, y=trainY, batch_size=batchSize,
-                       epochs=numEp, shuffle=True,
-                       validation_data=(valX,valY),
-                       verbose=1,
-                       callbacks=self.CBs)
+                self.model.fit_generator(datagen,
+                                         steps_per_epoch=300,
+                                         epochs=numEp,
+                                         callbacks=self.CBs,
+                                         validation_data=(valX,valY))
             
             self.batch_sig.emit(100)    
             
@@ -1054,7 +1057,6 @@ class TrainThread(QThread):
             graph = keras.backend.tf.get_default_graph()
             with graph.as_default():
                 self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
-            
             
             self.message_sig.emit('Evaluating on validation data...')
             score = self.model.evaluate(valX,valY,verbose=0)
