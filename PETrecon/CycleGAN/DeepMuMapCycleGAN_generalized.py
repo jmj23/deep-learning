@@ -74,7 +74,7 @@ gif_prog = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 50000
+numIter = 25000
 # how many iterations between updating progress image
 progstep = 50
 # how many iterations between checking validation score
@@ -88,9 +88,9 @@ val_b_s = 8
 train_rat = 5
 # Whether or not to pretrain generators
 # Leave as false if data is not aligned
-L1pretrain = False
-Dpretrain = False
-pretrain_epochs = 1
+L1pretrain = True
+Dpretrain = True
+pretrain_epochs = 5
 pretrain_lr = 1e-4
 
 #%% Loading data
@@ -135,8 +135,7 @@ fake_MR = GenModel_CT2MR.outputs[0]
 rec_CT = GenModel_MR2CT([fake_MR])
 # MR to CT and back generator function
 fn_genCT = K.function([real_MR],[fake_CT,rec_MR])
-fn_genCTpre = K.function([real_MR],[fake_CT])
-fn_genMRpre = K.function([real_CT],[fake_MR])
+fn_gen_pre = K.function([real_MR,real_CT],[fake_CT,rec_MR])
 
 # Discriminator scores
 realCTscore = DisModel_CT([real_CT])
@@ -195,7 +194,7 @@ D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(weights_D,[],loss_D)
 fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2],[loss_CT, loss_MR], D_trups)
 
 # Generator Training function
-loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR + 0*loss_CT2MR2CT
+loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR #+ C*loss_CT2MR2CT
 weights_G = GenModel_MR2CT.trainable_weights + GenModel_CT2MR.trainable_weights
 MR2CT_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], loss_G)
 # Generator training function returns MR2CT discriminator loss and MR2CT2MR cycle loss
@@ -248,8 +247,7 @@ def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
 def ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
     MR_samp = test_MR[ex_ind,...][np.newaxis,...]
     CT_samp = test_CT[ex_ind,...][np.newaxis,...]
-    [CTpre] = fn_genCTpre([MR_samp])
-    [MRpre] = fn_genMRpre([CT_samp])
+    [CTpre,MRpre] = fn_gen_pre([MR_samp,CT_samp])
     if CT_reg:
         CT_pre = CTpre[0,...,0]
         CT_truth = CT_samp[0,...,0]
@@ -280,7 +278,7 @@ def ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
                       transform=ax.transAxes)
     plt.text(1.02, 0.04,'CT input', ha='left', va='top',color='red',
                       transform=ax.transAxes)
-    plt.text(1.02, 0.96,'MR predict', ha='left', va='top',color='red',
+    plt.text(1.02, 0.96,'MR recover', ha='left', va='top',color='red',
                       transform=ax.transAxes)
     plt.pause(.001)
     plt.draw()
@@ -289,12 +287,11 @@ def ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
 #%% Optional Pretraining using L1 loss
 if L1pretrain:
     # Generator pretraining losses
-    pretrain_loss_CT2MR = K.mean(K.abs(fake_MR-real_MR))
     pretrain_loss_MR2CT = K.mean(K.abs(fake_CT-real_CT))
-    pretrain_loss = pretrain_loss_MR2CT + pretrain_loss_CT2MR
+    pretrain_loss = pretrain_loss_MR2CT + loss_MR2CT2MR
     # Generator pretraining updates and function
     pretrain_trups = Adam(lr=pretrain_lr, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], pretrain_loss)
-    pretrain_fn = K.function([real_MR,real_CT],[pretrain_loss_MR2CT,pretrain_loss_CT2MR],updates=pretrain_trups)
+    pretrain_fn = K.function([real_MR,real_CT],[pretrain_loss_MR2CT,loss_MR2CT2MR],updates=pretrain_trups)
     # calculate equivalent batches for number of epochs
     pre_numIter = np.int(pretrain_epochs*train_MR.shape[0]/b_s)
     # Updatable plot
@@ -306,9 +303,12 @@ if L1pretrain:
         numProgs = np.maximum(np.int(pre_numIter/progstep),1)
         pre_progress_ims = np.zeros((numProgs+1,2*256,2*256))
         pg = 0
-        
+    # pre allocate losses
+    pre_dis_loss = np.zeros((pre_numIter,2))
+    pre_gen_loss = np.zeros((pre_numIter,2))
     # setup progress bar
     pre_t = trange(pre_numIter,file=sys.stdout)
+    # start pretraining
     tqdm.write('Pre-training...')
     for ii in pre_t:
         if Dpretrain:
@@ -320,25 +320,39 @@ if L1pretrain:
                 CT_batch = train_CT[batch_inds,...]
                 ϵ1 = np.random.uniform(size=(b_s, 1, 1 ,1))
                 ϵ2 = np.random.uniform(size=(b_s, 1, 1 ,1))
-                _ = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
+                errD = fn_trainD([MR_batch, CT_batch, ϵ1,ϵ2])
+            pre_dis_loss[ii] = errD
         else:
             # get batches
             batch_inds = np.random.choice(train_MR.shape[0], b_s, replace=False)
             MR_batch = train_MR[batch_inds,...]
             CT_batch = train_CT[batch_inds,...]
         # Pre train Generators
-        CTerr, MRerr = pretrain_fn([MR_batch, CT_batch])
+        errG = pretrain_fn([MR_batch, CT_batch])
+        pre_gen_loss[ii] = errG
         # Update progress image
         if ii % progstep == 0:
             samp_im = ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
             pre_progress_ims[pg] = samp_im
             pg += 1
         # Print generator losses in progress bar
-        pre_t.set_postfix(MR2CTerror=CTerr,CT2MRerr= MRerr)
+        pre_t.set_postfix(Dis_Error=errD[0],M2CTR_Error= errG[0],Cycle_Error=errG[1])
         
     pre_t.close()
     del pre_t
     print('Pretraining complete')
+    fig4 = plt.figure(4)
+    plt.plot(np.arange(pre_numIter),-pre_dis_loss[:,0],
+             np.arange(pre_numIter),-pre_dis_loss[:,1],
+             np.arange(pre_numIter),100*pre_gen_loss[:,0],
+             np.arange(pre_numIter),100*pre_gen_loss[:,1])
+             
+    plt.legend(['-Discriminator CT Loss',
+                '-Discriminator MR Loss',
+                '100x MR2CT L1 Loss',
+                '100x Cycle loss'])
+    plt.ylim([0,100])
+    plt.show()
 
 #%% training
 print('Starting training...')
@@ -364,7 +378,8 @@ print('Training adversarial model')
 
 # validation counter
 vv = 0
-
+if 't' in locals():
+    del t
 t = trange(numIter,file=sys.stdout)
 for ii in t:
     for _ in range(train_rat):
