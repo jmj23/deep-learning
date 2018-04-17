@@ -90,7 +90,7 @@ train_rat = 5
 # Leave as false if data is not aligned
 L1pretrain = True
 Dpretrain = True
-pretrain_epochs = 5
+pretrain_epochs = 10
 pretrain_lr = 1e-4
 
 #%% Loading data
@@ -448,7 +448,7 @@ print('Backup Models saved')
 # smoothed since it's usually pretty rocky
 # the L1 losses are multipled by 1000 to match scale
 from scipy.signal import medfilt
-fig5 = plt.figure(5)
+fig5 = plt.figure(6)
 plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],5),
          np.arange(numIter),-medfilt(dis_loss[:,1],5),
          np.arange(numIter),medfilt(1000*gen_loss[:,1],5),
