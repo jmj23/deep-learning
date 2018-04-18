@@ -80,6 +80,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.images = []
             # current mask for current images
             self.mask = []
+            # current set of targets
+            self.targets = []
             # HDF5 file of annotations
             self.AnnotationFile = []
             # deep learning model
@@ -141,29 +143,32 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
             
             
-    def data_save(self,*args):
+    def data_save(self):
         if self.saved:
             self.disp_msg = 'No new changes'
             return
         try:
-#            w = QtWidgets.QWidget()
-#            if len(self.savename)==0:
-#                suggest = os.path.join(self.datadir,'SegData.mat')
-#            else:
-#                suggest = suggest = os.path.join(self.savedir,self.savename)
-#            save_path = QtWidgets.QFileDialog.getSaveFileName(w,'Save Data',suggest,"MAT file (*.mat)")
-#            
-#            if len(save_path[0])==0:
-#                return
+            w = QtWidgets.QWidget()
+            suggest = os.path.join(self.datadir,'ItATMISdata.h5')
+            save_path = QtWidgets.QFileDialog.getSaveFileName(w,'Save Data',suggest,"hdf5 file (*.h5)")
+            
+            if len(save_path[0])==0:
+                return
             try:
                 self.disp_msg = 'Saving data...'
-                TrainingFile = 'TrainingData.h5'
-                with h5py.File(TrainingFile,'w') as hf:
-                    hf.create_dataset("images",data=self.images,dtype='f')
-                    hf.create_dataset("segmask",data=self.segmask,dtype='f')
-                    
-#                a['segfile'] = True
-#                spio.savemat(save_path[0],a)
+                # convert strings to acii
+                file_list_ascii = [n.encode("ascii", "ignore") for n in self.file_list]
+                datadir_ascii = [self.datadir.encode("ascii", "ignore")]
+                
+                with h5py.File(save_path,'w') as hf:
+                    hf.create_dataset("ItATMISfile",data=True,dtype=np.bool)
+                    hf.create_dataset("images",data=self.images,dtype=np.float)
+                    hf.create_dataset("segmask",data=self.segmask,dtype=np.float)
+                    hf.create_dataset("file_list", (len(file_list_ascii),1),'S10', file_list_ascii)
+                    hf.create_dataset("datadir", (len(datadir_ascii),1),'S10',datadir_ascii)
+                    hf.create_dataset("Find",data=self.FNind,dtype=np.int)
+                    hf.create_dataset("mask",data=self.mask,dtype=np.float)
+                    hf.create_dataset("targets",data=self.targets,dtype=np.float)
                     
                 self.saved = True
                 self.disp_msg = 'Data saved'
@@ -173,7 +178,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
         except Exception as e:
             print(e)
-            
+    
+    def data_load(self):
+        
+        
+        
     def InitDisplay(self):
         try:
             # create empty segmask
