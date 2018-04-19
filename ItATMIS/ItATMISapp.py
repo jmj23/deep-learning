@@ -61,6 +61,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.actionUndo.triggered.connect(self.undo)
             self.ui.actionClear_Mask.triggered.connect(self.clearMask)
             self.ui.action_Save_Data.triggered.connect(self.data_save)
+            self.ui.action_Load_Data.triggered.connect(self.data_load)
             self.ui.pb_SelectData.clicked.connect(self.DataSelect)
             self.ui.pb_Train.clicked.connect(self.Train)
             
@@ -80,6 +81,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.images = []
             # current mask for current images
             self.mask = []
+            # current slice index
+            self.ind = []
             # current set of targets
             self.targets = []
             # HDF5 file of annotations
@@ -144,6 +147,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             
             
     def data_save(self):
+        print('saving')
         if self.saved:
             self.disp_msg = 'No new changes'
             return
@@ -151,21 +155,23 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             w = QtWidgets.QWidget()
             suggest = os.path.join(self.datadir,'ItATMISdata.h5')
             save_path = QtWidgets.QFileDialog.getSaveFileName(w,'Save Data',suggest,"hdf5 file (*.h5)")
-            
             if len(save_path[0])==0:
                 return
             try:
                 self.disp_msg = 'Saving data...'
-                # convert strings to acii
+                # convert strings to ascii
                 file_list_ascii = [n.encode("ascii", "ignore") for n in self.file_list]
                 datadir_ascii = [self.datadir.encode("ascii", "ignore")]
+                dt = h5py.special_dtype(vlen=bytes)
                 
-                with h5py.File(save_path,'w') as hf:
+                print(save_path[0])
+                with h5py.File(save_path[0],'w') as hf:
                     hf.create_dataset("ItATMISfile",data=True,dtype=np.bool)
                     hf.create_dataset("images",data=self.images,dtype=np.float)
                     hf.create_dataset("segmask",data=self.segmask,dtype=np.float)
-                    hf.create_dataset("file_list", (len(file_list_ascii),1),'S10', file_list_ascii)
-                    hf.create_dataset("datadir", (len(datadir_ascii),1),'S10',datadir_ascii)
+                    hf.create_dataset("ind",data=self.ind,dtype=np.int)
+                    hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
+                    hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
                     hf.create_dataset("Find",data=self.FNind,dtype=np.int)
                     hf.create_dataset("mask",data=self.mask,dtype=np.float)
                     hf.create_dataset("targets",data=self.targets,dtype=np.float)
@@ -180,7 +186,64 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print(e)
     
     def data_load(self):
+        # check for saved
+        if not self.saved:
+            unsaved_msg = "You have unsaved data that will be discarded. Continue?"
+            reply = QtWidgets.QMessageBox.question(self, 'Unsaved Data', 
+                             unsaved_msg, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
+            if reply == QtWidgets.QMessageBox.No:
+                return
         
+        
+        # get file path
+        w = QtWidgets.QWidget()
+        data_tup = QtWidgets.QFileDialog.getOpenFileName(w, 'Select data file',
+                                                         self.datadir, 'hdf5 files (*.h5)')
+        data_path = data_tup[0]
+        if len(data_path) == 0:
+            return
+        self.disp_msg = 'Loading previous data...'
+        # clear current data
+        self.segmask = []
+        self.segOutput = []
+        # check if ItATMIS data
+        with h5py.File(data_path,'r') as hf:
+            keys = list(hf.keys())
+            file_check = 'ItATMISfile' in keys
+        if not file_check:
+            self.error_msg = 'Not an ItATMIS file'
+            return
+        
+        # load saved data
+        try:
+            with h5py.File(data_path,'r') as hf:
+                self.images = np.array(hf.get('images'))
+                self.volshape = self.images.shape
+                self.ind = np.array(hf.get('ind'))
+                file_list_temp = hf.get('file_list')
+                self.file_list = [n[0].decode('utf-8') for n in file_list_temp]
+                datadir_temp = hf.get('datadir')
+                self.datadir = datadir_temp[0][0].decode('utf-8')
+                self.Find = np.array(hf.get('Find'))
+                self.targets = np.array(hf.get('targets'))
+            
+            # initialize display
+            self.InitDisplay()
+            # load masks for displaying
+            with h5py.File(data_path,'r') as hf:
+                self.segmask = np.array(hf.get('segmask'))
+                self.mask = np.array(hf.get('mask'))
+            # update view
+            self.vbox.setRange(xRange=(0,self.volshape[2]),
+                            yRange=(0,self.volshape[1]))
+            self.img_item.setImage(self.images[self.ind,...],autoLevels=True)
+            self.msk_item.setImage(self.mask[self.ind,...])
+                
+            self.disp_msg = 'Data loaded'
+            
+        except Exception as e:
+            self.error_msg = 'Error loading data'
+            print(e)
         
         
     def InitDisplay(self):
@@ -214,8 +277,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.vbox.addItem(self.msk_item)
             
             # Add initial image and mask
-            ind = np.round(self.images.shape[0]/2).astype(np.int16)
-            self.ind = ind
+            if np.array(self.ind).size == 0:
+                ind = np.round(self.images.shape[0]/2).astype(np.int16)
+                self.ind = ind
             self.img_item.setImage(self.images[self.ind,...])
             self.msk_item.setImage(self.mask[self.ind,...])
             self.curmask = self.segmask[self.ind,...]
@@ -694,23 +758,21 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     @saved.setter
     def saved(self, value):
         self._saved = value
-        if value:
-            self.ui.action_Save_Data.setEnabled(False)
-        else:
-            self.ui.action_Save_Data.setEnabled(True)
+        self.ui.action_Save_Data.setEnabled(not value)
         QtWidgets.qApp.processEvents()
         
     def closeEvent(self, ev):
         # check to quit
-        quit_msg = "Are you sure you wish to close?"
-        reply = QtWidgets.QMessageBox.warning(self, 'Closing', 
-                         quit_msg, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
-    
-        if reply == QtWidgets.QMessageBox.Yes:
-            ev.accept()
-        else:
-            ev.ignore()
-            return
+        if not self.saved:
+            quit_msg = "Are you sure you wish to close?"
+            reply = QtWidgets.QMessageBox.warning(self, 'Closing', 
+                             quit_msg, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
+        
+            if reply == QtWidgets.QMessageBox.Yes:
+                ev.accept()
+            else:
+                ev.ignore()
+                return
         # save config file
         self.saveConfig()
         
@@ -1006,7 +1068,7 @@ class TrainThread(QThread):
                 hf.create_dataset("trainY",data=trainY,dtype='f')
                 hf.create_dataset("valX",data=valX,dtype='f')
                 hf.create_dataset("valY",data=valY,dtype='f')
-            raise ValueError('Saved training data')
+            
             
             # setup image data generator
             datagen1 = ImageDataGenerator(
