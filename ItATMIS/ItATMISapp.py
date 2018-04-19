@@ -121,7 +121,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             if os.path.isfile(self.configFN):
                 config = configparser.ConfigParser()
                 try:
-                    config.read(self.configFN);
+                    config.read(self.configFN)
                 except Exception as e:
                     self.error_msg = 'Unable to read config file. Creating new'
                     config = configparser.ConfigParser()
@@ -475,7 +475,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 pbrush = pbrush[:,:xbump]
             if np.array_equal(reg.shape,pbrush.shape):
                 if bt == 1:
-                    reg = np.maximum(pbrush,reg);
+                    reg = np.maximum(pbrush,reg)
                     cmask[lby:uby,lbx:ubx] = reg          
                 else:
                     reg = np.minimum(1-np.minimum(pbrush,reg),reg)
@@ -899,7 +899,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             w = QtWidgets.QWidget()
             filters = "NIFTI files (*.nii)"
             selected_filter = filters
-            full_path,used_filter = QtWidgets.QFileDialog.getOpenFileName(
+            full_path,_ = QtWidgets.QFileDialog.getOpenFileName(
                                             w, 'Select image file',
                                             self.parent.datadir,
                                             filters,selected_filter)
@@ -913,7 +913,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             # generate file names
             self.parent.datadir = filedir
             imp_list = []  # create an empty list
-            for dirName, subdirList, fileList in os.walk(filedir):
+            for dirName, _, fileList in os.walk(filedir):
                 for filename in fileList:
                     if ext in filename.lower():  # get all files of same extension
                         imp_list.append(os.path.join(dirName,filename))
