@@ -58,7 +58,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.progBar.setVisible(False)
             
             # attach callbacks
-#            self.ui.actionSaveModel.triggered.connect(self.saveCor)
+            # self.ui.actionSaveModel.triggered.connect(self.saveCor)
             self.ui.actionReset_View.triggered.connect(self.resetView)
             self.ui.actionUndo.triggered.connect(self.undo)
             self.ui.actionClear_Mask.triggered.connect(self.clearMask)
@@ -320,7 +320,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.viewAxial.keyPressEvent = self.vbKeyPress
             
             # make full screen
-#            self.showMaximized()
+
             scrnsiz = QtWidgets.QDesktopWidget().screenGeometry()
             cntr = scrnsiz.center()
             width = 1011
@@ -1102,7 +1102,7 @@ class TrainThread(QThread):
             # calculate number of epochs and batches
             numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
             steps = np.int(trainX.shape[0]/batchsize*2)
-#            numBatches = trainX.shape[0]*numEp/batchsize
+            # numBatches = trainX.shape[0]*numEp/batchsize
             numSteps = steps*numEp
             
             # Make progress callback
