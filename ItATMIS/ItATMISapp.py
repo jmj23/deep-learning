@@ -115,9 +115,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                                           verbose=1,mode='auto')
             self.cb_check = []
             # Set keras optimizer
-            self.adopt = Adam()
             keras.backend.tf.reset_default_graph()
             keras.backend.clear_session()
+            self.adopt = Adam()
             
             # Initialize or load config file
             if os.path.isfile(self.configFN):
