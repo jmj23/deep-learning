@@ -39,6 +39,8 @@ from keras.preprocessing.image import ImageDataGenerator
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
+os.chdir('/home/jmj136/deep-learning/ItATMIS')
+
 main_ui_file= "main.ui"
 select_ui_file = "DataSelect.ui"
 
