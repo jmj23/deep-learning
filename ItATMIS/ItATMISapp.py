@@ -111,7 +111,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # keras graph
             self.graph = []
             # Set keras callbacks
-            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=5,
+            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=3,
                                           verbose=1,mode='auto')
             self.cb_check = []
             # Set keras optimizer
@@ -164,6 +164,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 # convert strings to ascii
                 file_list_ascii = [n.encode("ascii", "ignore") for n in self.file_list]
                 datadir_ascii = [self.datadir.encode("ascii", "ignore")]
+                if not self.model_path == []:
+                    modelpath_ascii = [self.model_path.encode("ascii","ignore")]
                 dt = h5py.special_dtype(vlen=bytes)
                 
                 print(save_path[0])
@@ -174,6 +176,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("ind",data=self.ind,dtype=np.int)
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
+                    if not self.model_path == []:
+                        hf.create_dataset("model_path", (len(modelpath_ascii),1),dt,modelpath_ascii)
                     hf.create_dataset("Find",data=self.FNind,dtype=np.int)
                     hf.create_dataset("mask",data=self.mask,dtype=np.float)
                     hf.create_dataset("targets",data=self.targets,dtype=np.float)
@@ -226,8 +230,15 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.file_list = [n[0].decode('utf-8') for n in file_list_temp]
                 datadir_temp = hf.get('datadir')
                 self.datadir = datadir_temp[0][0].decode('utf-8')
+                if 'model_path' in list(hf.keys()):
+                    modelpath_temp = hf.get('model_path')
+                    self.model_path = modelpath_temp[0][0].decode('utf-8')
                 self.Find = np.array(hf.get('Find'))
                 self.targets = np.array(hf.get('targets'))
+
+            if not self.model_path == []:
+                # load model
+                self.disp_msg = 'Loading saved model...'
             
             # initialize display
             self.InitDisplay()
@@ -409,6 +420,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def brushHover(self,ev):
         if ev.isEnter():
             QtWidgets.QApplication.setOverrideCursor(QCursor(Qt.BlankCursor))
+            QtWidgets.qApp.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0.5))
         elif ev.isExit():
             QtWidgets.QApplication.restoreOverrideCursor()
@@ -450,7 +462,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             fmask = binary_fill_holes(self.curmask)
             self.segmask[self.ind,...] = fmask
             self.updateMask()
-#            self.calcFunc()
+        # self.calcFunc()
         ev.accept()
         
     def draw(self,x,y):
@@ -560,7 +572,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.imp_thread.start()
     
     def imp_finish_imp(self):
-        pass
+        return
     
     def gotImages(self,images,segAfter):
         self.images = images
@@ -595,14 +607,23 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.disp_msg = 'Segmentation complete'
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setVisible(False)
+        time.sleep(.1)
         QtWidgets.QApplication.restoreOverrideCursor()
+        QtWidgets.qApp.processEvents()
+        print('Restored cursor')
         self.ui.viewAxial.setEnabled(True)
         self.img_item.setImage(self.images[self.ind,...],autoLevels=False)
-        self.msk_item.setImage(self.mask[self.ind,...])
+        print(self.segmask.shape)
+        print(np.min(self.segmask),np.mean(self.segmask),np.max(self.segmask))
         self.mask[...,3] = self.alph*self.segmask
+        self.msk_item.setImage(self.mask[self.ind,...])
+        print('Updated mask')
         
     
     def seg_gotmask(self,mask):
+        print('Got segmask')
+        print(mask.shape)
+        print(np.min(mask),np.mean(mask),np.max(mask))
         self.segmask = mask
         
     def seg_error(self,error):
@@ -655,7 +676,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # Set checkpoint callback if not already set
             if self.cb_check == []:
                 print('Making callback...')
-                self.model_path = os.path.join(self.datadir,'ItATMISmodel.h5')
+                if self.model_path == []:
+                    timestr = time.strftime("%Y%m%d")
+                    self.model_path = os.path.join(self.datadir,'ItATMISmodel_{}.h5'.format(timestr))
                 self.cb_check = ModelCheckpoint(self.model_path,monitor='val_loss',
                                            verbose=0,save_best_only=True,
                                            save_weights_only=False,
@@ -1033,6 +1056,10 @@ class TrainThread(QThread):
             # adjust orientation
             canon_nft = nib.as_closest_canonical(nft)
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+            # normalize
+            for im in ims:
+                im -= np.min(im)
+                im /= np.max(im)
             # add axis
             inputs = ims[...,np.newaxis]
             # import rest of niftis, if more than 1 subject
@@ -1043,6 +1070,9 @@ class TrainThread(QThread):
                     # adjust orientation
                     canon_nft = nib.as_closest_canonical(nft)
                     ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+                    for im in ims:
+                        im -= np.min(im)
+                        im /= np.max(im)
                     # add axis and concatenate to target array
                     inputs = np.concatenate((inputs,ims[...,np.newaxis]),axis=0)
             
@@ -1101,21 +1131,20 @@ class TrainThread(QThread):
             
             # calculate number of epochs and batches
             numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
-            steps = np.int(trainX.shape[0]/batchsize*2)
-            # numBatches = trainX.shape[0]*numEp/batchsize
+            steps = np.maximum(np.int(trainX.shape[0]/batchsize*8),1000)
             numSteps = steps*numEp
             
             # Make progress callback
             progCB = ProgressCallback()
             progCB.thread = self
             progCB.progress = 0
-            progCB.batchpercent = 100/numSteps
+            progCB.batchpercent = 100/(numSteps)
             self.CBs = self.CBs + [progCB]
             
             self.message_sig.emit('Training model...')
             with self.graph.as_default():
                 self.model.fit_generator(datagen,
-                                         steps_per_epoch=300,
+                                         steps_per_epoch=steps,
                                          epochs=numEp,
                                          callbacks=self.CBs,
                                          validation_data=(valX,valY))
