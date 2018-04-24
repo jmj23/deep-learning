@@ -56,6 +56,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.setupUi(self)
             
             self.ui.progBar.setVisible(False)
+            self.ui.stopButton.setVisible(False)
             
             # attach callbacks
             # self.ui.actionSaveModel.triggered.connect(self.saveCor)
@@ -149,7 +150,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             
             
     def data_save(self):
-        print('saving')
         if self.saved:
             self.disp_msg = 'No new changes'
             return
@@ -166,6 +166,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 datadir_ascii = [self.datadir.encode("ascii", "ignore")]
                 if not self.model_path == []:
                     modelpath_ascii = [self.model_path.encode("ascii","ignore")]
+                if not self.AnnotationFile == []:
+                    annotationfile_ascii = [self.AnnotationFile.encode("ascii","ignore")]
                 dt = h5py.special_dtype(vlen=bytes)
                 
                 print(save_path[0])
@@ -178,7 +180,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
                     if not self.model_path == []:
                         hf.create_dataset("model_path", (len(modelpath_ascii),1),dt,modelpath_ascii)
-                    hf.create_dataset("Find",data=self.FNind,dtype=np.int)
+                    if not self.AnnotationFile == []:
+                        hf.create_dataset("annotation_file",(len(annotationfile_ascii),1),dt,annotationfile_ascii)
+                    hf.create_dataset("FNind",data=self.FNind,dtype=np.int)
                     hf.create_dataset("mask",data=self.mask,dtype=np.float)
                     hf.create_dataset("targets",data=self.targets,dtype=np.float)
                     
@@ -233,12 +237,19 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 if 'model_path' in list(hf.keys()):
                     modelpath_temp = hf.get('model_path')
                     self.model_path = modelpath_temp[0][0].decode('utf-8')
-                self.Find = np.array(hf.get('Find'))
+                if 'annotation_file' in list(hf.keys()):
+                    annotationfile_temp = hf.get('annotation_file')
+                    self.AnnotationFile = annotationfile_temp[0][0].decode('utf-8')
+                self.FNind = np.array(hf.get('FNind'))
+                print(self.FNind)
                 self.targets = np.array(hf.get('targets'))
 
             if not self.model_path == []:
                 # load model
                 self.disp_msg = 'Loading saved model...'
+                self.graph = keras.backend.tf.get_default_graph()
+                with self.graph.as_default():
+                    self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
             
             # initialize display
             self.InitDisplay()
@@ -257,7 +268,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         except Exception as e:
             self.error_msg = 'Error loading data'
             print(e)
-        
+            print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
         
     def InitDisplay(self):
         try:
@@ -420,10 +431,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def brushHover(self,ev):
         if ev.isEnter():
             QtWidgets.QApplication.setOverrideCursor(QCursor(Qt.BlankCursor))
-            QtWidgets.qApp.processEvents()
+            QtWidgets.QApplication.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0.5))
         elif ev.isExit():
             QtWidgets.QApplication.restoreOverrideCursor()
+            QtWidgets.QApplication.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0))
     def clickEvent(self,ev):
         if ev.button()==1 or ev.button()==2:
@@ -609,21 +621,14 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setVisible(False)
         time.sleep(.1)
         QtWidgets.QApplication.restoreOverrideCursor()
-        QtWidgets.qApp.processEvents()
-        print('Restored cursor')
+        QtWidgets.QApplication.processEvents()
         self.ui.viewAxial.setEnabled(True)
         self.img_item.setImage(self.images[self.ind,...],autoLevels=False)
-        print(self.segmask.shape)
-        print(np.min(self.segmask),np.mean(self.segmask),np.max(self.segmask))
         self.mask[...,3] = self.alph*self.segmask
         self.msk_item.setImage(self.mask[self.ind,...])
-        print('Updated mask')
         
     
     def seg_gotmask(self,mask):
-        print('Got segmask')
-        print(mask.shape)
-        print(np.min(mask),np.mean(mask),np.max(mask))
         self.segmask = mask
         
     def seg_error(self,error):
@@ -654,7 +659,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # Save or update annotations
             if len(self.AnnotationFile) ==0:
                 # make original annotation file
-                AnnotationFile = os.path.join(self.datadir,'Annotations.h5')
+                timestr = time.strftime("%Y%m%d%H")
+                AnnotationFile = os.path.join(self.datadir,'Annotations_{}.h5'.format(timestr))
                 with h5py.File(AnnotationFile,'w') as hf:
                     hf.create_dataset("targets", data=self.targets,dtype='f')
                     self.AnnotationFile = AnnotationFile
@@ -677,7 +683,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             if self.cb_check == []:
                 print('Making callback...')
                 if self.model_path == []:
-                    timestr = time.strftime("%Y%m%d")
+                    timestr = time.strftime("%Y%m%d%H")
                     self.model_path = os.path.join(self.datadir,'ItATMISmodel_{}.h5'.format(timestr))
                 self.cb_check = ModelCheckpoint(self.model_path,monitor='val_loss',
                                            verbose=0,save_best_only=True,
@@ -712,20 +718,23 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.graph = graph
         
     def trainFinished(self):
+        self.ui.stopButton.setVisible(False)
         self.EvalNextSubject()
         
     def trainError(self, msg):
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
+        self.ui.stopButton.setVisible(False)
         QtWidgets.QApplication.restoreOverrideCursor()
         self.ui.viewAxial.setEnabled(True)
         self.error_msg = msg
-        
+
     def trainStart(self):
         print('Training Started')
         self.ui.progBar.setRange(0,100)
         self.ui.progBar.setTextVisible(True)
+        self.ui.stopButton.setVisible(True)
         
     def trainBatch(self,num):
         self.ui.progBar.setValue(num)
@@ -1131,7 +1140,7 @@ class TrainThread(QThread):
             
             # calculate number of epochs and batches
             numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
-            steps = np.maximum(np.int(trainX.shape[0]/batchsize*8),1000)
+            steps = np.minimum(np.int(trainX.shape[0]/batchsize*8),1000)
             numSteps = steps*numEp
             
             # Make progress callback
