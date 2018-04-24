@@ -324,8 +324,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                                     symbol='o',symbolSize=2*self.rad+1,symbolPen=(100,100,100,.5),
                                     brush=None,pxMode=False)
             self.vbox.addItem(self.dot)
-            pg.SignalProxy(self.ui.viewAxial.scene().sigMouseMoved, rateLimit=100, slot=self.mouseMoved)
+            pg.SignalProxy(self.ui.viewAxial.scene().sigMouseMoved, rateLimit=120, slot=self.mouseMoved)
             self.ui.viewAxial.scene().sigMouseMoved.connect(self.mouseMoved)
+            # turn off regular cursor
+            self.vbox.cursor().setShape(Qt.BlankCursor)
             
             # Setup slider
             self.ui.slideAx.setMaximum(self.images.shape[0]-1)
@@ -345,8 +347,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
 
             scrnsiz = QtWidgets.QDesktopWidget().screenGeometry()
             cntr = scrnsiz.center()
-            width = 1011
-            height = 675
+            width = 1100
+            height = 720
             xv = np.round(cntr.x()-width/2)
             yv = np.round(cntr.y()-height/2)
             sizRect = QtCore.QRect(xv,yv,width,height)
@@ -431,11 +433,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def brushHover(self,ev):
         if ev.isEnter():
             QtWidgets.QApplication.setOverrideCursor(QCursor(Qt.BlankCursor))
-            QtWidgets.QApplication.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0.5))
         elif ev.isExit():
             QtWidgets.QApplication.restoreOverrideCursor()
-            QtWidgets.QApplication.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0))
     def clickEvent(self,ev):
         if ev.button()==1 or ev.button()==2:

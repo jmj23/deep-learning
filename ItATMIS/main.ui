@@ -116,7 +116,7 @@
        </palette>
       </property>
       <property name="cursor" stdset="0">
-       <cursorShape>ArrowCursor</cursorShape>
+       <cursorShape>BlankCursor</cursorShape>
       </property>
       <property name="mouseTracking">
        <bool>true</bool>
