@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1115</width>
+    <width>1129</width>
     <height>739</height>
    </rect>
   </property>
@@ -270,7 +270,7 @@
      </widget>
     </item>
     <item>
-     <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0,1">
+     <layout class="QVBoxLayout" name="verticalLayout_4" stretch="1,1">
       <property name="spacing">
        <number>0</number>
       </property>
@@ -287,8 +287,8 @@
         </property>
         <property name="minimumSize">
          <size>
-          <width>50</width>
-          <height>50</height>
+          <width>250</width>
+          <height>225</height>
          </size>
         </property>
         <property name="maximumSize">
@@ -382,20 +382,20 @@
        </widget>
       </item>
       <item>
-       <widget class="GraphicsLayoutWidget" name="viewSagittal">
+       <widget class="GraphicsLayoutWidget" name="viewSag">
         <property name="enabled">
          <bool>true</bool>
         </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
+          <horstretch>1</horstretch>
+          <verstretch>1</verstretch>
          </sizepolicy>
         </property>
         <property name="minimumSize">
          <size>
-          <width>50</width>
-          <height>50</height>
+          <width>250</width>
+          <height>225</height>
          </size>
         </property>
         <property name="maximumSize">
@@ -491,26 +491,10 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QListWidget" name="listFiles">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>16777215</height>
-         </size>
-        </property>
-       </widget>
-      </item>
      </layout>
     </item>
     <item>
-     <layout class="QVBoxLayout" name="verticalLayout_5" stretch="0,0,0">
+     <layout class="QVBoxLayout" name="verticalLayout_5" stretch="0,0">
       <item>
        <widget class="QFrame" name="frame">
         <property name="sizePolicy">
@@ -521,7 +505,7 @@
         </property>
         <property name="minimumSize">
          <size>
-          <width>180</width>
+          <width>200</width>
           <height>150</height>
          </size>
         </property>
@@ -789,22 +773,6 @@
        </widget>
       </item>
       <item>
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeType">
-         <enum>QSizePolicy::MinimumExpanding</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>150</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item>
        <widget class="QFrame" name="frame_3">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
@@ -814,8 +782,8 @@
         </property>
         <property name="maximumSize">
          <size>
-          <width>180</width>
-          <height>300</height>
+          <width>200</width>
+          <height>700</height>
          </size>
         </property>
         <property name="frameShape">
@@ -850,6 +818,22 @@
            </property>
            <property name="text">
             <string>Select Data...</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QListWidget" name="listFiles">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>200</width>
+             <height>16777215</height>
+            </size>
            </property>
           </widget>
          </item>

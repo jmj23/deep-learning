@@ -39,7 +39,7 @@ from keras.preprocessing.image import ImageDataGenerator
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
-os.chdir('/home/jmj136/deep-learning/ItATMIS')
+os.chdir('/home/jmj136/deep-learning/ItATMIS2')
 
 main_ui_file= "main.ui"
 select_ui_file = "DataSelect.ui"
@@ -84,8 +84,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.images = []
             # current mask for current images
             self.mask = []
-            # current slice index
-            self.ind = []
+            # current slice indices
+            self.inds= []
             # current set of targets
             self.targets = []
             # HDF5 file of annotations
@@ -175,7 +175,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("ItATMISfile",data=True,dtype=np.bool)
                     hf.create_dataset("images",data=self.images,dtype=np.float)
                     hf.create_dataset("segmask",data=self.segmask,dtype=np.float)
-                    hf.create_dataset("ind",data=self.ind,dtype=np.int)
+                    hf.create_dataset("inds",data=self.inds,dtype=np.int)
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
                     if not self.model_path == []:
@@ -229,7 +229,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             with h5py.File(data_path,'r') as hf:
                 self.images = np.array(hf.get('images'))
                 self.volshape = self.images.shape
-                self.ind = np.array(hf.get('ind'))
+                self.inds= np.array(hf.get('inds'))
                 file_list_temp = hf.get('file_list')
                 self.file_list = [n[0].decode('utf-8') for n in file_list_temp]
                 datadir_temp = hf.get('datadir')
@@ -247,6 +247,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             if not self.model_path == []:
                 # load model
                 self.disp_msg = 'Loading saved model...'
+                keras.backend.clear_session()
                 self.graph = keras.backend.tf.get_default_graph()
                 with self.graph.as_default():
                     self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
@@ -258,11 +259,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.segmask = np.array(hf.get('segmask'))
                 self.mask = np.array(hf.get('mask'))
             # update view
-            self.vbox.setRange(xRange=(0,self.volshape[2]),
-                            yRange=(0,self.volshape[1]))
-            self.img_item.setImage(self.images[self.ind,...],autoLevels=True)
-            self.msk_item.setImage(self.mask[self.ind,...])
-                
+            self.updateIms()
+            self.updateLines()                
             self.disp_msg = 'Data loaded'
             
         except Exception as e:
@@ -272,6 +270,65 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         
     def InitDisplay(self):
         try:
+            # calculate aspect ratios
+            asprat1 = 1
+            asprat2 = .5
+            asprat3 = .5
+            # add View Boxes to graphics view
+            if not hasattr(self, 'vbox_ax'):
+                self.vbox_ax = self.ui.viewAxial.addViewBox(border=None,
+                                                            enableMenu=False,
+                                                            enableMouse=False,
+                                                            invertY=True)
+                self.vbox_cor = self.ui.viewCoronal.addViewBox(border=None,
+                                                               enableMenu=False,
+                                                               enableMouse=False)
+                self.vbox_sag = self.ui.viewSag.addViewBox(border=None,
+                                                           enableMenu=False,
+                                                           enableMouse=False)
+            else:
+                self.vbox_ax.clear()
+                self.vbox_cor.clear()
+                self.vbox_sag.clear()
+
+            # fix aspect ratios
+            self.vbox_ax.setAspectLocked(True,ratio=asprat1)
+            self.vbox_cor.setAspectLocked(True,ratio=asprat2)
+            self.vbox_sag.setAspectLocked(True,ratio=asprat3)
+
+            
+            ## Create image items
+            self.img_item_ax = pg.ImageItem()
+            self.vbox_ax.addItem(self.img_item_ax)
+            
+            self.img_item_cor = pg.ImageItem()
+            self.vbox_cor.addItem(self.img_item_cor)
+            
+            self.img_item_sag = pg.ImageItem()
+            self.vbox_sag.addItem(self.img_item_sag)
+
+            # Create mask items
+            self.msk_item_ax = pg.ImageItem()
+            self.vbox_ax.addItem(self.msk_item_ax)
+            
+            self.msk_item_cor = pg.ImageItem()
+            self.vbox_cor.addItem(self.msk_item_cor)
+            
+            self.msk_item_sag = pg.ImageItem()
+            self.vbox_sag.addItem(self.msk_item_sag)
+
+            # Setup indices
+            imshape = np.array(self.images.shape,dtype=np.int16)
+            midinds = np.round(imshape/2).astype(np.int16)
+            self.inds = midinds
+            self.volshape = imshape
+
+
+            # Add initial images            
+            self.img_item_ax.setImage(self.images[midinds[0],...])
+            self.img_item_cor.setImage(self.images[:,midinds[1],:])
+            self.img_item_sag.setImage(self.images[:,:,midinds[2]])
+
             # create empty segmask
             self.segmask = np.zeros(self.images.shape)
             
@@ -283,36 +340,44 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             msk[...,2] = 0
             msk[...,3] = self.alph*self.segmask
             self.mask = msk
+            self.msk_item_ax.setImage(self.mask[midinds[0],...])
+            self.msk_item_cor.setImage(self.mask[:,midinds[1],...])
+            self.msk_item_sag.setImage(self.mask[:,:,midinds[2],...])
+
+            # buffer for view lines
+            # self.buff = np.round(np.array(buff/self.spatres)).astype(np.int16)
+            self.buff = np.array([2,4,2])
+            # coronal view lines
+            self.line_cor_ax = pg.PlotDataItem(pen='y',connect='pairs')
+            self.line_cor_ax.setData(x = np.array([0,midinds[2]-self.buff[2],midinds[2]+self.buff[2],imshape[2]]),
+                                     y = np.array([midinds[0],midinds[0],midinds[0],midinds[0]]))
+            self.vbox_cor.addItem(self.line_cor_ax)
             
+            self.line_cor_sag = pg.PlotDataItem(pen='y',connect='pairs')
+            self.line_cor_sag.setData(x = np.array([midinds[1],midinds[1],midinds[1],midinds[1]]),
+                                     y = np.array([0,midinds[0]-self.buff[0],midinds[0]+self.buff[0],imshape[0]]))
+            self.vbox_cor.addItem(self.line_cor_sag)
+            # saggital view lines
+            self.line_sag_ax = pg.PlotDataItem(pen='y',connect='pairs')
+            self.line_sag_ax.setData(x = np.array([0,midinds[1]-self.buff[1],midinds[1]+self.buff[1],imshape[1]]),
+                                     y = np.array([midinds[0],midinds[0],midinds[0],midinds[0]]))
+            self.vbox_sag.addItem(self.line_sag_ax)
             
-            # setup plots
-            asprat1 = 1
-            if self.vbox == []:
-                self.vbox = self.ui.viewAxial.addViewBox(border=None,
-                                                    enableMenu=False,
-                                                    enableMouse=False,
-                                                    invertY=True)
-        
-            self.vbox.setAspectLocked(True,ratio=asprat1)
-            self.img_item = pg.ImageItem()
-            self.vbox.addItem(self.img_item)
-            self.img_item.setBorder((255,0,0,100))
-            self.msk_item = pg.ImageItem()
-            self.vbox.addItem(self.msk_item)
-            
-            # Add initial image and mask
-            if np.array(self.ind).size == 0:
-                ind = np.round(self.images.shape[0]/2).astype(np.int16)
-                self.ind = ind
-            self.img_item.setImage(self.images[self.ind,...])
-            self.msk_item.setImage(self.mask[self.ind,...])
-            self.curmask = self.segmask[self.ind,...]
-            self.prev_mask = self.segmask[self.ind,...]
-            #adjust view range
-            self.vbox.setRange(xRange=(0,self.volshape[2]),yRange=(0,self.volshape[1]),
-                                  padding=0.,disableAutoRange=True)
+            self.line_sag_cor = pg.PlotDataItem(pen='y',connect='pairs')
+            self.line_sag_cor.setData(x = np.array([midinds[2],midinds[2],midinds[2],midinds[2]]),
+                                     y = np.array([0,midinds[0]-self.buff[0],midinds[0]+self.buff[0],imshape[0]]))
+            self.vbox_sag.addItem(self.line_sag_cor)
+
+            # adjust viewbox ranges
+            self.vbox_ax.setRange(xRange=(0,imshape[2]),yRange=(0,imshape[1]),
+                                  disableAutoRange=True,padding=0.)
+            self.vbox_cor.setRange(xRange=(0,imshape[2]),yRange=(0,imshape[0]),
+                                  disableAutoRange=True,padding=0.)
+            self.vbox_sag.setRange(xRange=(0,imshape[1]),yRange=(0,imshape[0]),
+                                  disableAutoRange=True,padding=0.)
+
             # calculate window/leveling multiplier
-            self.WLmult = self.img_item.getLevels()[1]/500
+            self.WLmult = self.img_item_ax.getLevels()[1]/500
             
             # create starting brush            
             self.BrushMult = 1
@@ -323,28 +388,36 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.dot = pg.ScatterPlotItem(x=np.array([5.]),y=np.array([5.]),
                                     symbol='o',symbolSize=2*self.rad+1,symbolPen=(100,100,100,.5),
                                     brush=None,pxMode=False)
-            self.vbox.addItem(self.dot)
+            self.vbox_ax.addItem(self.dot)
             pg.SignalProxy(self.ui.viewAxial.scene().sigMouseMoved, rateLimit=120, slot=self.mouseMoved)
             self.ui.viewAxial.scene().sigMouseMoved.connect(self.mouseMoved)
-            # turn off regular cursor
-            self.ui.viewAxial.setCursor(QtCore.Qt.BlankCursor)
+
+            self.dot.mouseClickEvent = self.testclick
             
             # Setup slider
             self.ui.slideAx.setMaximum(self.images.shape[0]-1)
-            self.ui.slideAx.setValue(self.ind)
+            self.ui.slideAx.setValue(self.inds[0])
             
             # attach call backs
-            self.img_item.mousePressEvent = self.clickEvent
-            self.img_item.hoverEvent = self.brushHover
-            self.msk_item.mousePressEvent = self.clickEvent
             self.ui.slideAx.valueChanged.connect(self.slide)
             self.ui.slideAlpha.valueChanged.connect(self.alphaSlide)
             self.ui.slideBrushSize.valueChanged.connect(self.brushSlide)
-            self.ui.viewAxial.wheelEvent = self.scroll
+
             self.ui.viewAxial.keyPressEvent = self.vbKeyPress
+            self.ui.viewAxial.wheelEvent = self.scroll
+            self.img_item_ax.mouseClickEvent = self.axClickEvent
+            self.img_item_ax.mouseDragEvent = self.axDragEvent
+            self.img_item_ax.hoverEvent = self.brushHover
+
+            self.ui.viewCoronal.wheelEvent = self.corScroll
+            self.img_item_cor.mouseClickEvent = self.corClickEvent
+            self.img_item_cor.mouseDragEvent = self.corDragEvent
+
+            self.ui.viewSag.wheelEvent = self.sagScroll
+            self.img_item_sag.mouseClickEvent = self.sagClickEvent
+            self.img_item_sag.mouseDragEvent = self.sagDragEvent
             
             # make full screen
-
             scrnsiz = QtWidgets.QDesktopWidget().screenGeometry()
             cntr = scrnsiz.center()
             width = 1100
@@ -357,14 +430,36 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
-            
+
+
+    def updateIms(self):
+        self.img_item_ax.setImage(self.images[self.inds[0],...],autoLevels=False)
+        self.img_item_cor.setImage(self.images[:,self.inds[1],:],autoLevels=False)
+        self.img_item_sag.setImage(self.images[:,:,self.inds[2]],autoLevels=False)
+        self.msk_item_ax.setImage(self.mask[self.inds[0],...])
+        self.msk_item_cor.setImage(self.mask[:,self.inds[1],...])
+        self.msk_item_sag.setImage(self.mask[:,:,self.inds[2],...])
+        
+    def updateLines(self):
+        self.line_cor_ax.setData(x = np.array([0,self.inds[2]-self.buff[2],self.inds[2]+self.buff[2],self.volshape[2]]),
+                                 y = np.array([self.inds[0],self.inds[0],self.inds[0],self.inds[0]]))
+        self.line_cor_sag.setData(x = np.array([self.inds[2],self.inds[2],self.inds[2],self.inds[2]]),
+                                  y = np.array([0,self.inds[0]-self.buff[0],self.inds[0]+self.buff[0],self.volshape[0]]))
+        
+        self.line_sag_ax.setData(x = np.array([0,self.inds[1]-self.buff[1],self.inds[1]+self.buff[1],self.volshape[1]]),
+                                 y=np.array([self.inds[0],self.inds[0],self.inds[0],self.inds[0]]))
+        self.line_sag_cor.setData(x = np.array([self.inds[1],self.inds[1],self.inds[1],self.inds[1]]),
+                             y = np.array([0,self.inds[0]-self.buff[0],self.inds[0]+self.buff[0],self.volshape[0]]))
+        
+        
     def slide(self,ev):
         try:
-            self.img_item.setImage(self.images[ev,...],autoLevels=False)
-            self.msk_item.setImage(self.mask[ev,...])
-            self.ind = ev
+            self.img_item_ax.setImage(self.images[ev,...],autoLevels=False)
+            self.msk_item_ax.setImage(self.mask[ev,...])
+            self.inds[0] = ev
             # update undo mask
             self.prev_mask = np.copy(self.segmask[ev,...])
+            self.updateLines()
             
         except Exception as e:
             print(e)
@@ -375,14 +470,105 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         if mods == QtCore.Qt.ControlModifier:
             bump = -event.angleDelta().y()/120
             fac = 1+.1*bump
-            pos = self.vbox.mapToView(event.pos())
-            self.vbox.scaleBy(s=fac,center=(pos.x(),pos.y()))
+            pos = self.vbox_ax.mapToView(event.pos())
+            self.vbox_ax.scaleBy(s=fac,center=(pos.x(),pos.y()))
             event.accept()
         else:
             curval = self.ui.slideAx.value()
             newval = np.int16(np.clip(curval+event.angleDelta().y()/120,0,
                              self.volshape[0]-1))
             self.ui.slideAx.setValue(newval)
+
+    def corScroll(self,ev):
+        curval = self.inds[1]
+        newval = np.int16(np.clip(curval+ev.angleDelta().y()/120,0,
+                         self.volshape[1]-1))
+        self.inds[1]= newval
+        self.corUpdate(newval)
+        self.updateLines()
+
+    def corUpdate(self,value):
+        self.img_item_cor.setImage(self.images[:,value,:],autoLevels=False)
+        self.msk_item_cor.setImage(self.mask[:,self.inds[1],...])       
+         
+    def sagScroll(self,event):
+        curval = self.inds[2]
+        newval = np.int16(np.clip(curval+event.angleDelta().y()/120,0,
+                         self.volshape[2]-1))
+        self.inds[2] = newval
+        self.sagUpdate(newval)
+        self.updateLines()
+            
+    def sagUpdate(self,value):
+        self.img_item_sag.setImage(self.images[:,:,value],autoLevels=False)
+        self.msk_item_sag.setImage(self.mask[:,:,self.inds[2],...])
+
+    def corClickEvent(self,ev):
+        if ev.button()==1:
+            posx = ev.pos().x()
+            posy = ev.pos().y()
+            self.corMove(posx,posy)
+            ev.accept()
+        else:
+            ev.ignore()
+                    
+    def corDragEvent(self,ev):
+        if ev.button()==1:
+            posx = ev.pos().x()
+            posy = ev.pos().y()
+            self.corMove(posx,posy)
+            ev.accept()
+            
+        if ev.button()==4:
+            if ev.isStart():
+                self.prevLevel = np.array(self.img_item_cor.getLevels())
+                self.startPos = np.array([ev.pos().x(),ev.pos().y()])
+            else:
+                self.levelEvent(ev)
+            ev.accept()
+                
+    def corMove(self,x,y):
+        aval = np.int16(np.clip(y,0,self.volshape[0]-1))
+        self.inds[0] = aval
+        self.ui.slideAx.setValue(aval)
+        sval = np.int16(np.clip(x,0,self.volshape[2]-1))
+        self.inds[2] = sval
+        self.sagUpdate(sval)
+        self.updateLines()
+                                 
+    def sagClickEvent(self,ev):
+        if ev.button()==1:
+            posx = ev.pos().x()
+            posy = ev.pos().y()
+            self.sagMove(posx,posy)
+            ev.accept()
+        else:
+            ev.ignore()
+            
+    def sagDragEvent(self,ev):
+        if ev.button()==1:
+            posx = ev.pos().x()
+            posy = ev.pos().y()
+            self.sagMove(posx,posy)
+            ev.accept()
+            
+        if ev.button()==4:
+            if ev.isStart():
+                self.prevLevel = np.array(self.img_item_sag.getLevels())
+                self.startPos = np.array([ev.pos().x(),ev.pos().y()])
+            else:
+                self.levelEvent(ev)
+            ev.accept()
+                
+    def sagMove(self,x,y):
+        aval = np.int16(np.clip(y,0,self.volshape[0]-1))
+        self.inds[0] = aval
+        self.ui.slideAx.setValue(aval)
+        cval = np.int16(np.clip(x,0,self.volshape[1]-1))
+        self.inds[1] = cval
+        self.corUpdate(cval)
+        self.updateLines()
+    
     def brushSlide(self,event):
         self.brush = self.my_brush_mask(event*self.BrushMult)
         self.rad = event
@@ -423,62 +609,76 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         y,x = np.ogrid[-r: r+1, -r: r+1]
         mask = x**2+y**2 <= r**2+.5*r
         return mask.astype(int)
+
     def alphaSlide(self,ev):
         self.alph = .1*ev
-        self.updateMask()
+        self.updateIms()
+
     def mouseMoved(self,pos):
-        if self.img_item.sceneBoundingRect().contains(pos):
-            mousePoint = self.vbox.mapSceneToView(pos)
+        if self.img_item_ax.sceneBoundingRect().contains(pos):
+            mousePoint = self.vbox_ax.mapSceneToView(pos)
             self.dot.setData(x=np.array([mousePoint.x()]),y=np.array([mousePoint.y()]))
+
     def brushHover(self,ev):
         if ev.isEnter():
-            QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.BlankCursor))
-            QtWidgets.qApp.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0.5))
         elif ev.isExit():
-            QtWidgets.QApplication.restoreOverrideCursor()
-            QtWidgets.qApp.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0))
-    def clickEvent(self,ev):
+
+    def testclick(self,ev):
+        ev.ignore()
+
+    def axClickEvent(self,ev):
+        print('ax clicked')
         if ev.button()==1 or ev.button()==2:
-            self.img_item.mouseMoveEvent = self.movingEvent
-            self.msk_item.mouseMoveEvent = self.movingEvent
-            self.img_item.mouseReleaseEvent = self.releaseEvent
-            self.msk_item.mouseReleaseEvent = self.releaseEvent
-            self.curmask = self.segmask[self.ind,...]
-            self.prev_mask = np.copy(self.curmask)
+            self.curmask = self.segmask[self.inds[0],...]
             posx = ev.pos().x()
             posy = ev.pos().y()
             self.bt = ev.button()
-            self.draw(posx,posy)
-            ev.accept()
-        elif ev.button()==4:
-            self.img_item.mouseMoveEvent = self.levelEvent
-            self.msk_item.mouseMoveEvent = self.levelEvent
-            self.img_item.mouseReleaseEvent = self.releaseEvent
-            self.msk_item.mouseReleaseEvent = self.releaseEvent
-            self.prevLevel = np.array(self.img_item.getLevels())
-            self.startPos = np.array([ev.pos().x(),ev.pos().y()])
+            self.axMove(posx,posy)
             ev.accept()
         else:
             ev.ignore()
-            
-    def movingEvent(self,ev):
-        posx = ev.pos().x()
-        posy = ev.pos().y()
-        self.draw(posx,posy)
-        ev.accept()
-        
-    def releaseEvent(self,ev):
-        self.img_item.mouseMoveEvent = ''
-        self.msk_item.mouseMoveEvent = ''
+
+    def axDragEvent(self,ev):
         if ev.button()==1 or ev.button()==2:
-            fmask = binary_fill_holes(self.curmask)
-            self.segmask[self.ind,...] = fmask
-            self.updateMask()
-        # self.calcFunc()
-        ev.accept()
-        
+            if ev.isStart():
+                self.curmask = self.segmask[self.inds[0],...]
+                self.prev_mask = np.copy(self.curmask)
+                self.bt = ev.button()
+                posx = ev.pos().x()
+                posy = ev.pos().y()
+                self.axMove(posx,posy)
+            elif ev.isFinish():
+                fmask = binary_fill_holes(self.curmask)
+                self.segmask[self.inds[0],...] = fmask
+                self.mask[self.inds[0],...,3] = self.alph*fmask
+                self.updateIms()
+            else:
+                posx = ev.pos().x()
+                posy = ev.pos().y()
+                self.axMove(posx,posy)
+            ev.accept()
+
+        if ev.button()==4:
+            if ev.isStart():
+                self.prevLevel = np.array(self.img_item_ax.getLevels())
+                self.startPos = np.array([ev.pos().x(),ev.pos().y()])
+            else:
+                self.levelEvent(ev)
+            ev.accept()
+
+    def axMove(self,x,y):
+        cval = np.int16(np.clip(y,0,self.volshape[1]-1))
+        self.inds[1]= cval
+        self.corUpdate(cval)
+        sval = np.int16(np.clip(x,0,self.volshape[2]-1))
+        self.inds[2]= sval
+        self.sagUpdate(sval)
+        self.updateLines()
+        self.draw(x,y)
+
+    
     def draw(self,x,y):
         try:
             brush = self.brush
@@ -510,30 +710,18 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     cmask[lby:uby,lbx:ubx] = reg
                     
             self.curmask = cmask
-            self.mask[self.ind,...,3] = self.alph*cmask
-            self.msk_item.setImage(self.mask[self.ind,...])
+            self.mask[self.inds[0],...,3] = self.alph*cmask
+            self.updateIms()
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
-    
-    def updateMask(self):
-        self.mask[...,3] = self.alph*self.segmask
-        self.msk_item.setImage(self.mask[self.ind,...])
-        self.saved = False
-        
-    def showUncorMask(self):
-        if self.ui.buttonUncorMask.checked:
-            self.uncormask[...,3] = self.alph*self.parent.uncor_segmask
-        else:
-            self.uncormask[...,3] = 0
-        self.msk_uncor_item.setImage(self.mask_uncor[self.ind,...])
         
     def undo(self):
         try:
             temp = np.copy(self.prev_mask)
-            self.prev_mask = np.copy(self.segmask[self.ind,...])
-            self.segmask[self.ind,...] = temp
-            self.updateMask()
+            self.prev_mask = np.copy(self.segmask[self.inds[0],...])
+            self.segmask[self.inds[0],...] = temp
+            self.updateIms()
             self.calcFunc()
         except Exception as e:
             print(e)
@@ -548,15 +736,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         if reply == QtWidgets.QMessageBox.Yes:
             self.segmask = np.zeros_like(self.segmask)
             self.mask[...,3] = self.alph*self.segmask
-            self.msk_item.setImage(self.mask[self.ind,...])
+            self.updateIms()
             self.saved = False
             self.disp_msg = 'Current mask cleared'
         return        
-        
-            
-    def calcFunc(self):
-        print('Calculating')
-        
+                
     def levelEvent(self,ev):
         curpos = np.array([ev.pos().x(),ev.pos().y()])
         posdiff = self.WLmult*(curpos-self.startPos)
@@ -565,7 +749,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         newL = np.mean(prevLevels)+posdiff[1]
         newLev0 = newL-newW/2
         newLev1 = newL+newW/2
-        self.img_item.setLevels([newLev0,newLev1])
+        self.img_item_ax.setLevels([newLev0,newLev1])
+        self.img_item_cor.setLevels([newLev0,newLev1])
+        self.img_item_sag.setLevels([newLev0,newLev1])
         ev.accept()
         
     def DataSelect(self):
@@ -577,8 +763,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         curFN = self.file_list[self.FNind]
         self.ui.progBar.setVisible(True)
         self.ui.progBar.setRange(0,0)
-        # Set cursor to wait
-        QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.WaitCursor))
         self.imp_thread = NiftiImportThread(curFN,segAfter)
         self.imp_thread.finished.connect(self.imp_finish_imp)
         self.imp_thread.images_sig.connect(self.gotImages)
@@ -604,8 +788,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.progBar.setRange(0,1)
             self.ui.progBar.setTextVisible(False)
             self.ui.progBar.setVisible(False)
-            time.sleep(.1)
-            QtWidgets.QApplication.restoreOverrideCursor()
             self.ui.viewAxial.setEnabled(True)
             self.InitDisplay()
     
@@ -614,20 +796,15 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
-        QtWidgets.QApplication.restoreOverrideCursor()
         self.ui.viewAxial.setEnabled(True)
         
     def seg_finish(self):
         self.disp_msg = 'Segmentation complete'
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setVisible(False)
-        time.sleep(.1)
-        QtWidgets.QApplication.restoreOverrideCursor()
-        QtWidgets.qApp.processEvents()
         self.ui.viewAxial.setEnabled(True)
-        self.img_item.setImage(self.images[self.ind,...],autoLevels=False)
         self.mask[...,3] = self.alph*self.segmask
-        self.msk_item.setImage(self.mask[self.ind,...])
+        self.updateIms()
         
     
     def seg_gotmask(self,mask):
@@ -639,6 +816,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
         QtWidgets.QApplication.restoreOverrideCursor()
+        QtWidgets.qApp.processEvents()
         self.ui.viewAxial.setEnabled(True)
                 
     def PrepareTargets(self):
@@ -748,9 +926,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ImportImages(True)
                 
     def resetView(self,ev):
-        self.vbox.setRange(xRange=(0,self.volshape[2]),
-                            yRange=(0,self.volshape[1]))
-        self.img_item.setImage(self.images[self.ind,...],autoLevels=True)
+        self.vbox_ax.setRange(xRange=(0,self.volshape[2]),yRange=(0,self.volshape[1]))
+        self.vbox_cor.setRange(xRange=(0,self.volshape[2]),yRange=(0,self.volshape[0]))
+        self.vbox_sag.setRange(xRange=(0,self.volshape[1]),yRange=(0,self.volshape[0]))
+        self.img_item_ax.setImage(self.images[self.inds[0],...],autoLevels=True)
+        self.img_item_cor.setImage(self.images[:,self.inds[1],:],autoLevels=True)
+        self.img_item_sag.setImage(self.images[:,:,self.inds[2]],autoLevels=True)
         
             
     def saveConfig(self):
@@ -1273,5 +1454,4 @@ if __name__ == "__main__":
         print('rerunning')
     window = MainApp()
     window.show()
-    sys.exit(app.exec_())
-    print('here')
+    app.exec_()
