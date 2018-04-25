@@ -1,4 +1,4 @@
-## ItATMIS
+## ItATMIS 2.0
 
 Iterative Annotation and Training for Medical Image Segmentation
 
@@ -8,6 +8,9 @@ Iterative Annotation and Training for Medical Image Segmentation
 The GUI contained in this directory will be designed to aid the tedious process of annotating medical images, while simultaneously preparing a deep learning model that can then be used on future image segmentation tasks.
 
 ## Usage
+
+Install python package dependencies with
+pip install -r itatmis_requirements.txt
 
 This will be updated when the GUI is ready for use
 
