@@ -327,7 +327,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             pg.SignalProxy(self.ui.viewAxial.scene().sigMouseMoved, rateLimit=120, slot=self.mouseMoved)
             self.ui.viewAxial.scene().sigMouseMoved.connect(self.mouseMoved)
             # turn off regular cursor
-            self.vbox.cursor().setShape(Qt.BlankCursor)
+            self.ui.viewAxial.setCursor(QtCore.Qt.BlankCursor)
             
             # Setup slider
             self.ui.slideAx.setMaximum(self.images.shape[0]-1)
@@ -432,10 +432,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.dot.setData(x=np.array([mousePoint.x()]),y=np.array([mousePoint.y()]))
     def brushHover(self,ev):
         if ev.isEnter():
-            QtWidgets.QApplication.setOverrideCursor(QCursor(Qt.BlankCursor))
+            QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.BlankCursor))
+            QtWidgets.qApp.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0.5))
         elif ev.isExit():
             QtWidgets.QApplication.restoreOverrideCursor()
+            QtWidgets.qApp.processEvents()
             self.dot.setData(symbolPen=(100,100,100,0))
     def clickEvent(self,ev):
         if ev.button()==1 or ev.button()==2:
@@ -532,7 +534,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.prev_mask = np.copy(self.segmask[self.ind,...])
             self.segmask[self.ind,...] = temp
             self.updateMask()
-            self.calcFunc()
+            # self.calcFunc()
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
@@ -621,7 +623,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setVisible(False)
         time.sleep(.1)
         QtWidgets.QApplication.restoreOverrideCursor()
-        QtWidgets.QApplication.processEvents()
+        QtWidgets.qApp.processEvents()
         self.ui.viewAxial.setEnabled(True)
         self.img_item.setImage(self.images[self.ind,...],autoLevels=False)
         self.mask[...,3] = self.alph*self.segmask
@@ -649,7 +651,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.progBar.setVisible(True)
             self.ui.progBar.setRange(0,0)
             # Set cursor to wait
-            QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.WaitCursor))
+            # QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.WaitCursor))
+            # QtWidgets.qApp.processEvents()
             # Disable annotation window
             self.ui.viewAxial.setEnabled(False)
             
