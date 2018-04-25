@@ -1,0 +1,21 @@
+#
+### requirements for ItATMIS 2.0 app ###
+
+## Requiresments that are not version-specific ##
+numpy
+sys
+os
+pyqt5
+pyqtgraph
+gputil
+configparser
+nibabel
+natsort
+keras
+tensorflow
+h5py
+time
+scipy
+
+
+## Requirements with version specifiers ##
