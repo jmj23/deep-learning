@@ -89,6 +89,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.datadir= []
             # current images loaded into app
             self.images = []
+            # current affine matrix
+            self.niftiAff = []
             # current mask for current images
             self.mask = []
             # pre-segmentation
@@ -725,8 +727,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             else:
                 reg = np.minimum(1-np.minimum(pbrush,reg),reg)
                 cmask[lby:uby,lbx:ubx] = reg
-        else:
-            print('not equal')
                 
         self.curmask = cmask
         self.mask[self.inds[0],...,3] = self.alph*cmask
@@ -803,13 +803,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         return        
                 
     def quick_select(self,ev):
-        if ev:
-            self.qs_on = True
-            self.disp_msg = 'Quick Select on'
-        else:
-            self.qs_on = False
-            self.disp_msg = 'Quick Select off'
-        return
+        self.qs_on = ev
 
     def levelEvent(self,ev):
         curpos = np.array([ev.pos().x(),ev.pos().y()])
@@ -851,6 +845,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setRange(0,0)
         self.imp_thread = NiftiImportThread(curFN,segAfter)
         self.imp_thread.finished.connect(self.imp_finish_imp)
+        self.imp_thread.aff_sig.connect(self.gotAff)
         self.imp_thread.WS_sig.connect(self.gotWSseg)
         self.imp_thread.images_sig.connect(self.gotImages)        
         self.imp_thread.errorsig.connect(self.impError)
@@ -862,6 +857,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def gotWSseg(self,WSseg):
         self.WSseg = WSseg
         self.disp_msg = 'Images pre-segmented'
+
+    def gotAff(self,aff):
+        self.niftiAff = aff
+        self.disp_msg = 'Loaded affine matrix'
 
     def gotImages(self,images,segAfter):
         self.images = images
@@ -1271,6 +1270,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
 #%%
 class NiftiImportThread(QThread):
     images_sig = pyqtSignal(np.ndarray,bool)
+    aff_sig = pyqtSignal(np.ndarray)
     WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
     def __init__(self,FN,segAfter):
@@ -1297,6 +1297,8 @@ class NiftiImportThread(QThread):
             
             # adjust orientation
             canon_nft = nib.as_closest_canonical(nft)
+            aff = canon_nft.affine
+            self.aff_sig.emit(aff)
             
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
             for im in ims:
@@ -1306,7 +1308,7 @@ class NiftiImportThread(QThread):
             for ss in range(WSseg.shape[0]):
                 im = ims[ss,...]
                 imgrad = sobel(im)
-                WSseg[ss,...] = watershed(imgrad, markers=500, compactness=0.0001)
+                WSseg[ss,...] = watershed(imgrad, markers=800, compactness=0.001)
             
             self.WS_sig.emit(WSseg)
             self.images_sig.emit(ims,self.segAfter)
