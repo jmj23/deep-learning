@@ -7,8 +7,13 @@ import pyqtgraph as pg
 import numpy as np
 from scipy.ndimage import median_filter
 from scipy.ndimage.morphology import binary_fill_holes
-import os
+# watershed methods
+from skimage.segmentation import watershed
+from skimage.filters import sobel
+from skimage.morphology import reconstruction
+
 # Use first available GPU
+import os
 import GPUtil
 try:
     if not 'DEVICE_ID' in locals():
@@ -56,7 +61,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.setupUi(self)
             
             self.ui.progBar.setVisible(False)
-            self.ui.stopButton.setVisible(False)
             
             # attach callbacks
             # self.ui.actionSaveModel.triggered.connect(self.saveCor)
@@ -65,8 +69,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.actionClear_Mask.triggered.connect(self.clearMask)
             self.ui.action_Save_Data.triggered.connect(self.data_save)
             self.ui.action_Load_Data.triggered.connect(self.data_load)
+            self.ui.actionQuick_Select.triggered.connect(self.quick_select)
             self.ui.pb_SelectData.clicked.connect(self.DataSelect)
             self.ui.pb_Train.clicked.connect(self.Train)
+            self.ui.listFiles.itemClicked.connect(self.FileListClick)
+            self.ui.listFiles.itemDoubleClicked.connect(self.FileListSelect)
             
             # initialize display message
             self.disp_msg = 'Initializing...'
@@ -84,8 +91,14 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.images = []
             # current mask for current images
             self.mask = []
+            # pre-segmentation
+            self.WSseg = []
+            # quick select starts as false
+            self.qs_on = False
             # current slice indices
             self.inds= []
+            # number of classes to annotate
+            self.numClasses = []
             # current set of targets
             self.targets = []
             # HDF5 file of annotations
@@ -176,6 +189,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("images",data=self.images,dtype=np.float)
                     hf.create_dataset("segmask",data=self.segmask,dtype=np.float)
                     hf.create_dataset("inds",data=self.inds,dtype=np.int)
+                    hf.create_dataset("numClasses",data=self.numClasses,dtype=np.int)
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
                     if not self.model_path == []:
@@ -229,8 +243,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             with h5py.File(data_path,'r') as hf:
                 self.images = np.array(hf.get('images'))
                 self.volshape = self.images.shape
-                self.inds= np.array(hf.get('inds'))
-                file_list_temp = hf.get('file_list')
+                if 'inds' in list(hf.keys()):
+                    self.inds= np.array(hf.get('inds'))
+                if 'numClasses' in list(hf.keys()):
+                    file_list_temp = hf.get('file_list')
                 self.file_list = [n[0].decode('utf-8') for n in file_list_temp]
                 datadir_temp = hf.get('datadir')
                 self.datadir = datadir_temp[0][0].decode('utf-8')
@@ -254,6 +270,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             
             # initialize display
             self.InitDisplay()
+            # display file list
+            self.UpdateFNlist()
             # load masks for displaying
             with h5py.File(data_path,'r') as hf:
                 self.segmask = np.array(hf.get('segmask'))
@@ -431,7 +449,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
 
-
     def updateIms(self):
         self.img_item_ax.setImage(self.images[self.inds[0],...],autoLevels=False)
         self.img_item_cor.setImage(self.images[:,self.inds[1],:],autoLevels=False)
@@ -450,7 +467,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                                  y=np.array([self.inds[0],self.inds[0],self.inds[0],self.inds[0]]))
         self.line_sag_cor.setData(x = np.array([self.inds[1],self.inds[1],self.inds[1],self.inds[1]]),
                              y = np.array([0,self.inds[0]-self.buff[0],self.inds[0]+self.buff[0],self.volshape[0]]))
-        
         
     def slide(self,ev):
         try:
@@ -629,7 +645,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         ev.ignore()
 
     def axClickEvent(self,ev):
-        print('ax clicked')
         if ev.button()==1 or ev.button()==2:
             self.curmask = self.segmask[self.inds[0],...]
             posx = ev.pos().x()
@@ -644,6 +659,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         if ev.button()==1 or ev.button()==2:
             if ev.isStart():
                 self.curmask = self.segmask[self.inds[0],...]
+                self.curws = self.WSseg[self.inds[0],...]
                 self.prev_mask = np.copy(self.curmask)
                 self.bt = ev.button()
                 posx = ev.pos().x()
@@ -676,13 +692,51 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.inds[2]= sval
         self.sagUpdate(sval)
         self.updateLines()
-        self.draw(x,y)
+        if self.qs_on:
+            self.quickDraw(x,y)
+        else:
+            self.draw(x,y)
 
-    
     def draw(self,x,y):
+        brush = self.brush
+        cmask = self.curmask
+        bt = self.bt
+        m,n = cmask.shape
+        lby,uby = np.int16(np.max((y-self.rad,0))),np.int16(np.min((y+self.rad,m))+1)
+        lbx,ubx = np.int16(np.max((x-self.rad,0))),np.int16(np.min((x+self.rad,n))+1)
+        reg = cmask[lby:uby,lbx:ubx]
+        pbrush = np.copy(brush)
+        if lby==0:
+            ybump = uby-lby
+            pbrush = pbrush[-ybump:,:]
+        elif uby == m+1:
+            ybump = uby-lby-1
+            pbrush = pbrush[:ybump,:]
+        if lbx==0:
+            xbump = ubx-lbx
+            pbrush = pbrush[:,-xbump:]
+        elif ubx==n+1:
+            xbump = ubx-lbx-1
+            pbrush = pbrush[:,:xbump]
+        if np.array_equal(reg.shape,pbrush.shape):
+            if bt == 1:
+                reg = np.maximum(pbrush,reg)
+                cmask[lby:uby,lbx:ubx] = reg          
+            else:
+                reg = np.minimum(1-np.minimum(pbrush,reg),reg)
+                cmask[lby:uby,lbx:ubx] = reg
+        else:
+            print('not equal')
+                
+        self.curmask = cmask
+        self.mask[self.inds[0],...,3] = self.alph*cmask
+        self.msk_item_ax.setImage(self.mask[self.inds[0],...])
+    
+    def quickDraw(self,x,y):
         try:
             brush = self.brush
             cmask = self.curmask
+            pmask = np.zeros_like(cmask,dtype=np.bool)
             bt = self.bt
             m,n = cmask.shape
             lby,uby = np.int16(np.max((y-self.rad,0))),np.int16(np.min((y+self.rad,m))+1)
@@ -701,21 +755,28 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             elif ubx==n+1:
                 xbump = ubx-lbx-1
                 pbrush = pbrush[:,:xbump]
+
             if np.array_equal(reg.shape,pbrush.shape):
+                pmask[lby:uby,lbx:ubx] = pbrush
+                wsvals = np.unique(self.curws[pmask==1])
+                recon = np.zeros(self.curws.shape,dtype=np.bool)
+                for val in wsvals:
+                    recon+=(self.curws==val)
+                qmask = reconstruction(pmask,recon)
+
                 if bt == 1:
-                    reg = np.maximum(pbrush,reg)
-                    cmask[lby:uby,lbx:ubx] = reg          
+                    cmask = np.maximum(qmask,cmask)       
                 else:
-                    reg = np.minimum(1-np.minimum(pbrush,reg),reg)
-                    cmask[lby:uby,lbx:ubx] = reg
-                    
+                    cmask = np.minimum(1-np.minimum(qmask,cmask),cmask)            
+
             self.curmask = cmask
             self.mask[self.inds[0],...,3] = self.alph*cmask
-            self.updateIms()
+            self.msk_item_ax.setImage(self.mask[self.inds[0],...])
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
-        
+
+
     def undo(self):
         try:
             temp = np.copy(self.prev_mask)
@@ -741,6 +802,15 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.disp_msg = 'Current mask cleared'
         return        
                 
+    def quick_select(self,ev):
+        if ev:
+            self.qs_on = True
+            self.disp_msg = 'Quick Select on'
+        else:
+            self.qs_on = False
+            self.disp_msg = 'Quick Select off'
+        return
+
     def levelEvent(self,ev):
         curpos = np.array([ev.pos().x(),ev.pos().y()])
         posdiff = self.WLmult*(curpos-self.startPos)
@@ -757,6 +827,22 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def DataSelect(self):
         self.DataSelectW = DataSelect(self)
         self.DataSelectW.show()
+
+    def UpdateFNlist(self):
+        # add to list view
+        for fname in self.file_list:
+            _,fn = os.path.split(fname)
+            item = QtWidgets.QListWidgetItem(fn)
+            self.ui.listFiles.addItem(item)
+        # set current selection
+        self.ui.listFiles.setCurrentRow(self.FNind)
+    
+    def FileListSelect(self,ev):
+        print('Item selected')
+
+    def FileListClick(self,ev):
+        print('Item clicked')
+        self.ui.listFiles.setCurrentRow(self.FNind)
         
     def ImportImages(self,segAfter):
         self.disp_msg = "Importing subject {}...".format(self.FNind+1)
@@ -765,13 +851,18 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setRange(0,0)
         self.imp_thread = NiftiImportThread(curFN,segAfter)
         self.imp_thread.finished.connect(self.imp_finish_imp)
-        self.imp_thread.images_sig.connect(self.gotImages)
+        self.imp_thread.WS_sig.connect(self.gotWSseg)
+        self.imp_thread.images_sig.connect(self.gotImages)        
         self.imp_thread.errorsig.connect(self.impError)
         self.imp_thread.start()
     
     def imp_finish_imp(self):
         return
     
+    def gotWSseg(self,WSseg):
+        self.WSseg = WSseg
+        self.disp_msg = 'Images pre-segmented'
+
     def gotImages(self,images,segAfter):
         self.images = images
         self.volshape = images.shape
@@ -899,14 +990,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.graph = graph
         
     def trainFinished(self):
-        self.ui.stopButton.setVisible(False)
         self.EvalNextSubject()
         
     def trainError(self, msg):
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
-        self.ui.stopButton.setVisible(False)
         QtWidgets.QApplication.restoreOverrideCursor()
         self.ui.viewAxial.setEnabled(True)
         self.error_msg = msg
@@ -915,7 +1004,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         print('Training Started')
         self.ui.progBar.setRange(0,100)
         self.ui.progBar.setTextVisible(True)
-        self.ui.stopButton.setVisible(True)
         
     def trainBatch(self,num):
         self.ui.progBar.setValue(num)
@@ -1168,7 +1256,11 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             print(e)
             
     def setSelect(self):
-        self.parent.file_list = self.FNs            
+        self.parent.numClasses = self.ui.spinBox.value()
+        print('Number of classes selected is',self.parent.numClasses)
+        self.parent.ui.spinClass.setMaximum(self.parent.numClasses)
+        self.parent.file_list = self.FNs
+        self.parent.UpdateFNlist()
         self.parent.disp_msg = 'Files selected'
         self.parent.saved = False
         self.hide()
@@ -1179,6 +1271,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
 #%%
 class NiftiImportThread(QThread):
     images_sig = pyqtSignal(np.ndarray,bool)
+    WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
     def __init__(self,FN,segAfter):
         QThread.__init__(self)
@@ -1209,8 +1302,14 @@ class NiftiImportThread(QThread):
             for im in ims:
                 im -= np.min(im)
                 im /= np.max(im)
-            ims_send = self.noise_elim(ims)
-            self.images_sig.emit(ims_send,self.segAfter)
+            WSseg = np.zeros_like(ims)
+            for ss in range(WSseg.shape[0]):
+                im = ims[ss,...]
+                imgrad = sobel(im)
+                WSseg[ss,...] = watershed(imgrad, markers=500, compactness=0.0001)
+            
+            self.WS_sig.emit(WSseg)
+            self.images_sig.emit(ims,self.segAfter)
                 
         except Exception as e:
             self.errorsig.emit()
@@ -1406,44 +1505,7 @@ class SegThread(QThread):
             self.error_sig.emit(str(e))
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
             self.quit()
-#%%
-class CalcThread(QThread):
-    calcs_sig = pyqtSignal(tuple)
-    error_sig = pyqtSignal(str)
-    
-    def __init__(self,voxvol,uncor_segmask,segmask):
-        QThread.__init__(self)
-        self.voxvol = voxvol
-        self.uncor_segmask = uncor_segmask
-        self.segmask = segmask
-    def __del__(self):
-        self.wait()
 
-    def run(self):
-        try:
-            OTV = 1e-3*np.sum(self.uncor_segmask)*self.voxvol
-            CTV = 1e-3*np.sum(self.segmask)*self.voxvol
-            CUV = 1e-3*np.sum(np.multiply(self.segmask,
-                                         (1-self.uncor_segmask)))*self.voxvol
-            OUV = 1e-3*np.sum(np.multiply(self.uncor_segmask,
-                                                   (1-self.segmask)))*self.voxvol
-            if CTV!=0:
-                diff = 100*(OUV+CUV)/CTV
-            else:
-                diff = 0
-                
-            intersect = np.sum(np.multiply(self.segmask,self.uncor_segmask))
-            if (OTV+CTV)!=0:
-                dice = 200*(intersect*1e-3*self.voxvol)/(OTV+CTV)
-            else:
-                dice = 0
-            
-            calcs = (OTV, CTV, OUV, CUV,diff,dice)
-            self.calcs_sig.emit(calcs)
-        except Exception as e:
-            print(e)
-            self.error_sig.emit(e)
-            self.quit()           
 #%%
 if __name__ == "__main__":
     app = 0

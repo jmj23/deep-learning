@@ -823,6 +823,9 @@
          </item>
          <item>
           <widget class="QListWidget" name="listFiles">
+           <property name="enabled">
+            <bool>true</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
              <horstretch>0</horstretch>
@@ -834,6 +837,15 @@
              <width>200</width>
              <height>16777215</height>
             </size>
+           </property>
+           <property name="focusPolicy">
+            <enum>Qt::NoFocus</enum>
+           </property>
+           <property name="contextMenuPolicy">
+            <enum>Qt::CustomContextMenu</enum>
+           </property>
+           <property name="selectionMode">
+            <enum>QAbstractItemView::SingleSelection</enum>
            </property>
           </widget>
          </item>
@@ -928,20 +940,6 @@
              </property>
             </widget>
            </item>
-           <item>
-            <widget class="QToolButton" name="stopButton">
-             <property name="toolTip">
-              <string>Stop Training</string>
-             </property>
-             <property name="text">
-              <string>Stop</string>
-             </property>
-             <property name="icon">
-              <iconset>
-               <normaloff>StopIcon.png</normaloff>StopIcon.png</iconset>
-             </property>
-            </widget>
-           </item>
           </layout>
          </item>
         </layout>
@@ -974,8 +972,10 @@
    <addaction name="action_Load_Data"/>
    <addaction name="separator"/>
    <addaction name="actionReset_View"/>
-   <addaction name="actionUndo"/>
    <addaction name="actionClear_Mask"/>
+   <addaction name="actionUndo"/>
+   <addaction name="separator"/>
+   <addaction name="actionQuick_Select"/>
   </widget>
   <action name="action_Save_Data">
    <property name="checkable">
@@ -1062,6 +1062,24 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+L</string>
+   </property>
+  </action>
+  <action name="actionQuick_Select">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>QuickSelectIcon.png</normaloff>QuickSelectIcon.png</iconset>
+   </property>
+   <property name="text">
+    <string>Quick Select</string>
+   </property>
+   <property name="toolTip">
+    <string>Quick Select Mode</string>
+   </property>
+   <property name="shortcut">
+    <string>Shift+Q</string>
    </property>
   </action>
  </widget>
