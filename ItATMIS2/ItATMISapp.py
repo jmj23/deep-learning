@@ -190,7 +190,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("ItATMISfile",data=True,dtype=np.bool)
                     hf.create_dataset("images",data=self.images,dtype=np.float)
                     hf.create_dataset("segmask",data=self.segmask,dtype=np.float)
+                    hf.create_dataset("WSseg",data=self.WSseg,dtype=np.int)
                     hf.create_dataset("inds",data=self.inds,dtype=np.int)
+                    hf.create_dataset("spatres",data=self.spatres,dtype=np.float)
+                    hf.create_dataset("niftiAff",data=self.niftiAff,dtype=np.float)
                     hf.create_dataset("numClasses",data=self.numClasses,dtype=np.int)
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
@@ -199,7 +202,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     if not self.AnnotationFile == []:
                         hf.create_dataset("annotation_file",(len(annotationfile_ascii),1),dt,annotationfile_ascii)
                     hf.create_dataset("FNind",data=self.FNind,dtype=np.int)
-                    hf.create_dataset("mask",data=self.mask,dtype=np.float)
                     hf.create_dataset("targets",data=self.targets,dtype=np.float)
                     
                 self.saved = True
@@ -245,6 +247,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             with h5py.File(data_path,'r') as hf:
                 self.images = np.array(hf.get('images'))
                 self.volshape = self.images.shape
+                self.segmask = np.array(hf.get('segmask'))
+                self.WSseg = np.array(hf.get('WSseg'))
+                self.niftiAff = np.array(hf.get('niftiAff'))
+                self.spatres = np.array(hf.get('spatres'))
                 if 'inds' in list(hf.keys()):
                     self.inds= np.array(hf.get('inds'))
                 if 'numClasses' in list(hf.keys()):
@@ -274,13 +280,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.InitDisplay()
             # display file list
             self.UpdateFNlist()
-            # load masks for displaying
-            with h5py.File(data_path,'r') as hf:
-                self.segmask = np.array(hf.get('segmask'))
-                self.mask = np.array(hf.get('mask'))
             # update view
-            self.updateIms()
-            self.updateLines()                
+            # self.updateIms()
+            # self.updateLines()                
             self.disp_msg = 'Data loaded'
             
         except Exception as e:
@@ -291,9 +293,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def InitDisplay(self):
         try:
             # calculate aspect ratios
-            asprat1 = 1
-            asprat2 = .5
-            asprat3 = .5
+            asprat1 = self.spatres[1]/self.spatres[2]
+            asprat2 = self.spatres[1]/self.spatres[0]
+            asprat3 = self.spatres[2]/self.spatres[0]
+
             # add View Boxes to graphics view
             if not hasattr(self, 'vbox_ax'):
                 self.vbox_ax = self.ui.viewAxial.addViewBox(border=None,
@@ -350,7 +353,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.img_item_sag.setImage(self.images[:,:,midinds[2]])
 
             # create empty segmask
-            self.segmask = np.zeros(self.images.shape)
+            if self.segmask == []:
+                self.segmask = np.zeros(self.images.shape)
             
             # create empty display mask
             msksiz = np.r_[self.volshape,4]
@@ -409,7 +413,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                                     symbol='o',symbolSize=2*self.rad+1,symbolPen=(100,100,100,.5),
                                     brush=None,pxMode=False)
             self.vbox_ax.addItem(self.dot)
-            pg.SignalProxy(self.ui.viewAxial.scene().sigMouseMoved, rateLimit=120, slot=self.mouseMoved)
+            pg.SignalProxy(self.ui.viewAxial.scene().sigMouseMoved, rateLimit=200, slot=self.mouseMoved)
             self.ui.viewAxial.scene().sigMouseMoved.connect(self.mouseMoved)
 
             self.dot.mouseClickEvent = self.testclick
@@ -644,6 +648,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.dot.setData(symbolPen=(100,100,100,0))
 
     def testclick(self,ev):
+        # Leave this here!
         ev.ignore()
 
     def axClickEvent(self,ev):
@@ -653,6 +658,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             posy = ev.pos().y()
             self.bt = ev.button()
             self.axMove(posx,posy)
+            fmask = binary_fill_holes(self.curmask)
+            self.segmask[self.inds[0],...] = fmask
+            self.mask[self.inds[0],...,3] = self.alph*fmask
+            self.updateIms()
             ev.accept()
         else:
             ev.ignore()
@@ -776,7 +785,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
 
-
     def undo(self):
         try:
             temp = np.copy(self.prev_mask)
@@ -835,8 +843,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         print('Item selected')
 
     def FileListClick(self,ev):
-        print('Item clicked')
         self.ui.listFiles.setCurrentRow(self.FNind)
+
+    def ChangeSubject(self):
+
         
     def ImportImages(self,segAfter):
         self.disp_msg = "Importing subject {}...".format(self.FNind+1)
@@ -845,7 +855,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setRange(0,0)
         self.imp_thread = NiftiImportThread(curFN,segAfter)
         self.imp_thread.finished.connect(self.imp_finish_imp)
-        self.imp_thread.aff_sig.connect(self.gotAff)
+        self.imp_thread.data_sig.connect(self.gotData)
         self.imp_thread.WS_sig.connect(self.gotWSseg)
         self.imp_thread.images_sig.connect(self.gotImages)        
         self.imp_thread.errorsig.connect(self.impError)
@@ -858,9 +868,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.WSseg = WSseg
         self.disp_msg = 'Images pre-segmented'
 
-    def gotAff(self,aff):
+    def gotData(self,aff,spatres):
         self.niftiAff = aff
-        self.disp_msg = 'Loaded affine matrix'
+        self.spatres = spatres
+        self.disp_msg = 'Loaded image data'
 
     def gotImages(self,images,segAfter):
         self.images = images
@@ -1270,7 +1281,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
 #%%
 class NiftiImportThread(QThread):
     images_sig = pyqtSignal(np.ndarray,bool)
-    aff_sig = pyqtSignal(np.ndarray)
+    data_sig = pyqtSignal(np.ndarray,dict)
     WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
     def __init__(self,FN,segAfter):
@@ -1298,7 +1309,10 @@ class NiftiImportThread(QThread):
             # adjust orientation
             canon_nft = nib.as_closest_canonical(nft)
             aff = canon_nft.affine
-            self.aff_sig.emit(aff)
+            # Load spacing values (in mm)
+            spatres = np.array(canon_nft.header.get_zooms())
+            # Put into dict
+            self.aff_sig.emit(aff,spatres)
             
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
             for im in ims:
