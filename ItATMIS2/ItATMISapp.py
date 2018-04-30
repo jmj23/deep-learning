@@ -25,6 +25,7 @@ except RuntimeError as e:
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
 import configparser
+import contextlib
 import nibabel as nib
 from natsort import natsorted
 import keras
@@ -376,8 +377,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.msk_item_sag.setImage(self.mask[:,:,midinds[2],...])
 
             # buffer for view lines
-            # self.buff = np.round(np.array(buff/self.spatres)).astype(np.int16)
-            self.buff = np.array([2,4,2])
+            buff = 5
+            self.buff = np.round(np.array(buff/self.spatres)).astype(np.int16)
+            # self.buff = np.array([2,4,2])
             # coronal view lines
             self.line_cor_ax = pg.PlotDataItem(pen='y',connect='pairs')
             self.line_cor_ax.setData(x = np.array([0,midinds[2]-self.buff[2],midinds[2]+self.buff[2],imshape[2]]),
@@ -849,8 +851,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.listFiles.setCurrentRow(self.FNind)
     
     def FileListSelect(self,ev):
-        print(ev)
         newFNind = self.ui.listFiles.row(ev)
+        print(newFNind)
         self.ChangeSubject(newFNind)
 
     def FileListClick(self,ev):
@@ -869,11 +871,17 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             FN,ext = os.path.splitext(fFN)
             maskFN = FN + '_mask' + ext
             maskPath = os.path.join(maskdir,maskFN)
+            print('mask will be saved at',maskPath)
             # check if mask directory has been made already
             if not os.path.exists(maskdir):
+                print('making directory')
                 os.mkdir(maskdir)
             # save to nifti
+            print('saving mask')
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(maskPath)
             nib.save(img,maskPath)
+            print('mask saved')
             # update list of mask files
             self.mask_list[self.FNind] = True
 
@@ -893,8 +901,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.imp_thread.finished.connect(self.imp_finish_imp)
         self.imp_thread.data_sig.connect(self.gotData)
         self.imp_thread.WS_sig.connect(self.gotWSseg)
-        self.imp_thread.images_sig.connect(self.gotImages)        
+        self.imp_thread.images_sig.connect(self.gotImages)
         self.imp_thread.errorsig.connect(self.impError)
+        self.imp_thread.segmask_error.connect(self.impSegError)
         self.imp_thread.start()
     
     def imp_finish_imp(self):
@@ -902,7 +911,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     
     def gotWSseg(self,WSseg):
         self.WSseg = WSseg
-        self.disp_msg = 'Images pre-segmented'
 
     def gotData(self,aff,spatres):
         self.niftiAff = aff
@@ -934,7 +942,14 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
         self.ui.viewAxial.setEnabled(True)
-        
+
+    def impSegError(self,msg):
+        self.error_msg = msg
+        self.ui.progBar.setRange(0,1)
+        self.ui.progBar.setTextVisible(False)
+        self.ui.progBar.setVisible(False)
+        self.ui.viewAxial.setEnabled(True)
+
     def seg_finish(self):
         self.disp_msg = 'Segmentation complete'
         self.ui.progBar.setRange(0,1)
@@ -1255,7 +1270,6 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
                                             w, 'Select image file',
                                             self.parent.datadir,
                                             filters,selected_filter)
-            print(full_path)
             
             if len(full_path)==0:
                 return
@@ -1266,7 +1280,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             self.parent.datadir = filedir
             imp_list = []  # create an empty list
             for item in os.listdir(filedir):
-                if item.endswith('.nii')
+                if item.endswith('.nii'):
                     imp_list.append(os.path.join(filedir,item))
             imp_list = natsorted(imp_list)
             
@@ -1279,7 +1293,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
                 self.ui.list_files.addItem(item)
                 
             self.FNs = FNs
-            self.dirName = dirName
+            self.dirName = filedir
             self.ui.list_files.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
             self.ui.list_files.customContextMenuRequested.connect(self.contextMenu)
             
@@ -1320,6 +1334,7 @@ class NiftiImportThread(QThread):
     data_sig = pyqtSignal(np.ndarray,np.ndarray)
     WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
+    segmask_error = pyqtSignal(str)
     def __init__(self,FN,segAfter):
         QThread.__init__(self)
         self.FN = FN
@@ -1349,7 +1364,7 @@ class NiftiImportThread(QThread):
             spatres = np.array(canon_nft.header.get_zooms())
             # send to main app
             self.data_sig.emit(aff,spatres)
-            print(spatres)
+            
             # format and normalize images
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
             for im in ims:
@@ -1370,8 +1385,13 @@ class NiftiImportThread(QThread):
             maskFN = FN + '_mask' + ext
             maskPath = os.path.join(maskdir,maskFN)
             if os.path.exists(maskPath):
-                segnft = nib.as_closest_canonical(nib.load(maskPath))
-                segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2)
+                try:
+                    segnft = nib.as_closest_canonical(nib.load(maskPath))
+                    segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2)
+                except Exception as e:
+                    print(e)
+                    self.segmask_error.emit('Unable to load mask')
+                    segmask = np.zeros_like(ims)
             else:
                 segmask = np.zeros_like(ims)
             

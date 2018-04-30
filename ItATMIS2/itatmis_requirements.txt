@@ -16,6 +16,6 @@ tensorflow
 h5py
 time
 scipy
-
+contextlib
 
 ## Requirements with version specifiers ##
