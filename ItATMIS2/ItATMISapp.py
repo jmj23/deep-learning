@@ -301,12 +301,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         try:
             # calculate aspect ratios
             asprat1 = self.spatres[1]/self.spatres[0]
-            asprat2 = self.spatres[0]/self.spatres[2]
-            asprat3 = self.spatres[0]/self.spatres[1]
-            print('spatrial resolution is {}'.format(self.spatres))
-            print('asprat 1 = {}'.format(asprat1))
-            print('asprat 2 = {}'.format(asprat2))
-            print('asprat 3 = {}'.format(asprat3))
+            asprat2 = self.spatres[1]/self.spatres[2]
+            asprat3 = self.spatres[0]/self.spatres[2]
 
             # add View Boxes to graphics view
             if not hasattr(self, 'vbox_ax'):
@@ -864,7 +860,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         try:
             # Save current mask to nifti
             # create nifti image with same affine
-            img = nib.Nifti1Image(self.segmask, self.niftiAff)
+            data = np.swapaxes(np.rollaxis(self.segmask,2,0),1,2)
+            img = nib.Nifti1Image(data, self.niftiAff)
             # generate mask file name
             curFile = self.file_list[self.FNind]
             fdir,fFN = os.path.split(curFile)
@@ -911,9 +908,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.niftiAff = aff
         self.spatres = spatres
 
-    def gotImages(self,images,segAfter):
+    def gotImages(self,images,segmask,segAfter):
         self.images = images
         self.volshape = images.shape
+        self.segmask = segmask
         self.disp_msg = 'Images Imported'
         self.saved = False
         if segAfter:
@@ -1267,10 +1265,9 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             # generate file names
             self.parent.datadir = filedir
             imp_list = []  # create an empty list
-            for dirName, _, fileList in os.walk(filedir):
-                for filename in fileList:
-                    if ext in filename.lower():  # get all files of same extension
-                        imp_list.append(os.path.join(dirName,filename))
+            for item in os.listdir(filedir):
+                if item.endswith('.nii')
+                    imp_list.append(os.path.join(filedir,item))
             imp_list = natsorted(imp_list)
             
             FNs = []
@@ -1319,7 +1316,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
 
 #%%
 class NiftiImportThread(QThread):
-    images_sig = pyqtSignal(np.ndarray,bool)
+    images_sig = pyqtSignal(np.ndarray,np.ndarray,bool)
     data_sig = pyqtSignal(np.ndarray,np.ndarray)
     WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
@@ -1342,7 +1339,7 @@ class NiftiImportThread(QThread):
 
     def run(self):
         try:
-            # import water nifti
+            # import nifti
             nft = nib.load(self.FN)
             
             # adjust orientation
@@ -1353,20 +1350,33 @@ class NiftiImportThread(QThread):
             # send to main app
             self.data_sig.emit(aff,spatres)
             print(spatres)
-            
+            # format and normalize images
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
             for im in ims:
                 im -= np.min(im)
                 im /= np.max(im)
+            # create pre-segmentation for quick select
             WSseg = np.zeros_like(ims)
             for ss in range(WSseg.shape[0]):
                 im = ims[ss,...]
                 imgrad = sobel(im)
                 imgrad[imgrad<.01] = 0
                 WSseg[ss,...] = watershed(imgrad, markers=800, compactness=0.001)
+
+            # look for mask and load, if there is one
+            fdir,fFN = os.path.split(self.FN)
+            maskdir = os.path.join(fdir,'ItATMISmasks')
+            FN,ext = os.path.splitext(fFN)
+            maskFN = FN + '_mask' + ext
+            maskPath = os.path.join(maskdir,maskFN)
+            if os.path.exists(maskPath):
+                segnft = nib.as_closest_canonical(nib.load(maskPath))
+                segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2)
+            else:
+                segmask = np.zeros_like(ims)
             
             self.WS_sig.emit(WSseg)
-            self.images_sig.emit(ims,self.segAfter)
+            self.images_sig.emit(ims,segmask,self.segAfter)
                 
         except Exception as e:
             self.errorsig.emit()
