@@ -83,6 +83,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.configFN = 'config.ini'
             # list of files to be included in processing            
             self.file_list = []
+            # list of indices of files that have masks created
+            self.mask_list = []
             # current index in file list
             self.FNind = 0
             # most recently used directory of data
@@ -159,7 +161,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.config = config
             self.datadir = self.config.get('DEFAULT','data directory')
                     
-            self.disp_msg = 'Welcome to ItATMIS'
+            self.disp_msg = 'Welcome to ItATMIS 2.0'
             
         except Exception as e:
             print(e)
@@ -198,6 +200,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("niftiAff",data=self.niftiAff,dtype=np.float)
                     hf.create_dataset("numClasses",data=self.numClasses,dtype=np.int)
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
+                    hf.create_dataset("mask_list",data=np.array(self.mask_list),dtype=np.int)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
                     if not self.model_path == []:
                         hf.create_dataset("model_path", (len(modelpath_ascii),1),dt,modelpath_ascii)
@@ -256,8 +259,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 if 'inds' in list(hf.keys()):
                     self.inds= np.array(hf.get('inds'))
                 if 'numClasses' in list(hf.keys()):
-                    file_list_temp = hf.get('file_list')
+                    self.numClasses = np.array(hf.get('numClasses'))
+                file_list_temp = hf.get('file_list')
                 self.file_list = [n[0].decode('utf-8') for n in file_list_temp]
+                self.mask_list = list(hf.get('mask_list'))
                 datadir_temp = hf.get('datadir')
                 self.datadir = datadir_temp[0][0].decode('utf-8')
                 if 'model_path' in list(hf.keys()):
@@ -298,6 +303,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             asprat1 = self.spatres[1]/self.spatres[0]
             asprat2 = self.spatres[0]/self.spatres[2]
             asprat3 = self.spatres[0]/self.spatres[1]
+            print('spatrial resolution is {}'.format(self.spatres))
+            print('asprat 1 = {}'.format(asprat1))
+            print('asprat 2 = {}'.format(asprat2))
+            print('asprat 3 = {}'.format(asprat3))
 
             # add View Boxes to graphics view
             if not hasattr(self, 'vbox_ax'):
@@ -664,6 +673,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.segmask[self.inds[0],...] = fmask
             self.mask[self.inds[0],...,3] = self.alph*fmask
             self.updateIms()
+            self.saved = False
             ev.accept()
         else:
             ev.ignore()
@@ -683,6 +693,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.segmask[self.inds[0],...] = fmask
                 self.mask[self.inds[0],...,3] = self.alph*fmask
                 self.updateIms()
+                self.saved = False
             else:
                 posx = ev.pos().x()
                 posy = ev.pos().y()
@@ -849,9 +860,18 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def FileListClick(self,ev):
         self.ui.listFiles.setCurrentRow(self.FNind)
 
-    def ChangeSubject(self):
+    def ChangeSubject(self,ind):
         # Save current mask to nifti
-
+        # create nifti image with same affine
+        img = nib.Nifti1Image(self.segmask, self.niftiAff)
+        # generate mask file name
+        curFile = self.file_list[self.FNind]
+        fdir,fFN = os.path.split(curFile)
+        FN,ext = os.path.splitext(fFN)
+        maskFN = FN + '_mask' + ext
+        maskPath = os.path.join(fdir,maskFN)
+        # save to nifti
+        nib.save(img,maskPath)
         # load new subject
         self.FNind = ind
         self.ImportImages(self,False)
