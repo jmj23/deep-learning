@@ -200,7 +200,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("niftiAff",data=self.niftiAff,dtype=np.float)
                     hf.create_dataset("numClasses",data=self.numClasses,dtype=np.int)
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
-                    hf.create_dataset("mask_list",data=np.array(self.mask_list),dtype=np.int)
+                    hf.create_dataset("mask_list",data=np.array(self.mask_list),dtype=bool)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
                     if not self.model_path == []:
                         hf.create_dataset("model_path", (len(modelpath_ascii),1),dt,modelpath_ascii)
@@ -861,20 +861,31 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.listFiles.setCurrentRow(self.FNind)
 
     def ChangeSubject(self,ind):
-        # Save current mask to nifti
-        # create nifti image with same affine
-        img = nib.Nifti1Image(self.segmask, self.niftiAff)
-        # generate mask file name
-        curFile = self.file_list[self.FNind]
-        fdir,fFN = os.path.split(curFile)
-        FN,ext = os.path.splitext(fFN)
-        maskFN = FN + '_mask' + ext
-        maskPath = os.path.join(fdir,maskFN)
-        # save to nifti
-        nib.save(img,maskPath)
-        # load new subject
-        self.FNind = ind
-        self.ImportImages(self,False)
+        try:
+            # Save current mask to nifti
+            # create nifti image with same affine
+            img = nib.Nifti1Image(self.segmask, self.niftiAff)
+            # generate mask file name
+            curFile = self.file_list[self.FNind]
+            fdir,fFN = os.path.split(curFile)
+            maskdir = os.path.join(fdir,'ItATMISmasks')
+            FN,ext = os.path.splitext(fFN)
+            maskFN = FN + '_mask' + ext
+            maskPath = os.path.join(maskdir,maskFN)
+            # check if mask directory has been made already
+            if not os.path.exists(maskdir):
+                os.mkdir(maskdir)
+            # save to nifti
+            nib.save(img,maskPath)
+            # update list of mask files
+            self.mask_list[self.FNind] = True
+
+            # load new subject
+            self.FNind = ind
+            self.ImportImages(False)
+        except Exception as e:
+            print(e)
+            print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
         
     def ImportImages(self,segAfter):
         self.disp_msg = "Importing subject {}...".format(self.FNind+1)
@@ -1297,6 +1308,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
         print('Number of classes selected is',self.parent.numClasses)
         self.parent.ui.spinClass.setMaximum(self.parent.numClasses)
         self.parent.file_list = self.FNs
+        self.parent.mask_list = [False]*len(self.FNs)
         self.parent.UpdateFNlist()
         self.parent.disp_msg = 'Files selected'
         self.parent.saved = False
