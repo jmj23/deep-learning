@@ -863,19 +863,6 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pb_Next">
-           <property name="maximumSize">
-            <size>
-             <width>200</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Next Subject</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QListWidget" name="listDisp">
            <property name="maximumSize">
             <size>
