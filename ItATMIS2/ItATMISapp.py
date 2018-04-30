@@ -89,6 +89,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.datadir= []
             # current images loaded into app
             self.images = []
+            # current segmentation mask
+            self.segmask = []
             # current affine matrix
             self.niftiAff = []
             # current mask for current images
@@ -293,9 +295,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def InitDisplay(self):
         try:
             # calculate aspect ratios
-            asprat1 = self.spatres[1]/self.spatres[2]
-            asprat2 = self.spatres[1]/self.spatres[0]
-            asprat3 = self.spatres[2]/self.spatres[0]
+            asprat1 = self.spatres[1]/self.spatres[0]
+            asprat2 = self.spatres[0]/self.spatres[2]
+            asprat3 = self.spatres[0]/self.spatres[1]
 
             # add View Boxes to graphics view
             if not hasattr(self, 'vbox_ax'):
@@ -840,13 +842,19 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.listFiles.setCurrentRow(self.FNind)
     
     def FileListSelect(self,ev):
-        print('Item selected')
+        print(ev)
+        newFNind = self.ui.listFiles.row(ev)
+        self.ChangeSubject(newFNind)
 
     def FileListClick(self,ev):
         self.ui.listFiles.setCurrentRow(self.FNind)
 
     def ChangeSubject(self):
+        # Save current mask to nifti
 
+        # load new subject
+        self.FNind = ind
+        self.ImportImages(self,False)
         
     def ImportImages(self,segAfter):
         self.disp_msg = "Importing subject {}...".format(self.FNind+1)
@@ -871,7 +879,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def gotData(self,aff,spatres):
         self.niftiAff = aff
         self.spatres = spatres
-        self.disp_msg = 'Loaded image data'
 
     def gotImages(self,images,segAfter):
         self.images = images
@@ -1281,7 +1288,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
 #%%
 class NiftiImportThread(QThread):
     images_sig = pyqtSignal(np.ndarray,bool)
-    data_sig = pyqtSignal(np.ndarray,dict)
+    data_sig = pyqtSignal(np.ndarray,np.ndarray)
     WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
     def __init__(self,FN,segAfter):
@@ -1311,8 +1318,9 @@ class NiftiImportThread(QThread):
             aff = canon_nft.affine
             # Load spacing values (in mm)
             spatres = np.array(canon_nft.header.get_zooms())
-            # Put into dict
-            self.aff_sig.emit(aff,spatres)
+            # send to main app
+            self.data_sig.emit(aff,spatres)
+            print(spatres)
             
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
             for im in ims:
@@ -1322,6 +1330,7 @@ class NiftiImportThread(QThread):
             for ss in range(WSseg.shape[0]):
                 im = ims[ss,...]
                 imgrad = sobel(im)
+                imgrad[imgrad<.01] = 0
                 WSseg[ss,...] = watershed(imgrad, markers=800, compactness=0.001)
             
             self.WS_sig.emit(WSseg)
