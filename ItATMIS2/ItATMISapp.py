@@ -104,6 +104,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.qs_on = False
             # current slice indices
             self.inds= []
+            # whether model is currently training
+            self.training = False
             # number of classes to annotate
             self.numClasses = []
             # current set of targets
@@ -377,7 +379,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.msk_item_sag.setImage(self.mask[:,:,midinds[2],...])
 
             # buffer for view lines
-            buff = 5
+            buff = 10
             self.buff = np.round(np.array(buff/self.spatres)).astype(np.int16)
             # self.buff = np.array([2,4,2])
             # coronal view lines
@@ -802,7 +804,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.prev_mask = np.copy(self.segmask[self.inds[0],...])
             self.segmask[self.inds[0],...] = temp
             self.updateIms()
-            self.calcFunc()
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
@@ -858,9 +859,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def FileListClick(self,ev):
         self.ui.listFiles.setCurrentRow(self.FNind)
 
-    def ChangeSubject(self,ind):
-        try:
-            # Save current mask to nifti
+    def SaveCurrentMask(self):
+         # Save current mask to nifti
+        # only if mask has annotations
+        if not np.sum(self.segmask)==0:
             # create nifti image with same affine
             data = np.swapaxes(np.rollaxis(self.segmask,2,0),1,2)
             img = nib.Nifti1Image(data, self.niftiAff)
@@ -871,19 +873,19 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             FN,ext = os.path.splitext(fFN)
             maskFN = FN + '_mask' + ext
             maskPath = os.path.join(maskdir,maskFN)
-            print('mask will be saved at',maskPath)
             # check if mask directory has been made already
             if not os.path.exists(maskdir):
-                print('making directory')
                 os.mkdir(maskdir)
             # save to nifti
-            print('saving mask')
             with contextlib.suppress(FileNotFoundError):
                 os.remove(maskPath)
             nib.save(img,maskPath)
-            print('mask saved')
             # update list of mask files
             self.mask_list[self.FNind] = True
+
+    def ChangeSubject(self,ind):
+        try:
+            self.SaveCurrentMask()
 
             # load new subject
             self.FNind = ind
@@ -895,8 +897,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def ImportImages(self,segAfter):
         self.disp_msg = "Importing subject {}...".format(self.FNind+1)
         curFN = self.file_list[self.FNind]
-        self.ui.progBar.setVisible(True)
-        self.ui.progBar.setRange(0,0)
+        if not self.training:
+            self.ui.progBar.setVisible(True)
+            self.ui.progBar.setRange(0,0)
         self.imp_thread = NiftiImportThread(curFN,segAfter)
         self.imp_thread.finished.connect(self.imp_finish_imp)
         self.imp_thread.data_sig.connect(self.gotData)
@@ -924,15 +927,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.saved = False
         if segAfter:
             self.disp_msg = 'Segmenting images...'
-            self.seg_thread = SegThread(self.graph,self.images,self.model)
-            self.seg_thread.finished.connect(self.seg_finish)
-            self.seg_thread.segmask_sig.connect(self.seg_gotmask)
-            self.seg_thread.error_sig.connect(self.seg_error)
-            self.seg_thread.start()
+            self.EvalCurrentSubject()
         else:
-            self.ui.progBar.setRange(0,1)
-            self.ui.progBar.setTextVisible(False)
-            self.ui.progBar.setVisible(False)
+            if not self.training:
+                self.ui.progBar.setRange(0,1)
+                self.ui.progBar.setTextVisible(False)
+                self.ui.progBar.setVisible(False)
             self.ui.viewAxial.setEnabled(True)
             self.InitDisplay()
     
@@ -958,7 +958,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.mask[...,3] = self.alph*self.segmask
         self.updateIms()
         
-    
     def seg_gotmask(self,mask):
         self.segmask = mask
         
@@ -967,46 +966,22 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setTextVisible(False)
         self.ui.progBar.setVisible(False)
-        QtWidgets.QApplication.restoreOverrideCursor()
-        QtWidgets.qApp.processEvents()
         self.ui.viewAxial.setEnabled(True)
-                
-    def PrepareTargets(self):
-        if len(self.segmask) != 0:
-            self.targets = self.segmask[...,np.newaxis]
     
     def Train(self):
         try:
+            # save current mask
+            self.SaveCurrentMask()
+
             # Initialize progress bar
             self.ui.progBar.setVisible(True)
             self.ui.progBar.setRange(0,0)
-            # Set cursor to wait
-            # QtWidgets.QApplication.setOverrideCursor(QCursor(QtCore.Qt.WaitCursor))
-            # QtWidgets.qApp.processEvents()
-            # Disable annotation window
-            self.ui.viewAxial.setEnabled(False)
-            
-            # Prepare current inputs and targets
-            self.disp_msg = 'Preparing data...'
-            self.PrepareTargets()
-            # Save or update annotations
-            if len(self.AnnotationFile) ==0:
-                # make original annotation file
-                timestr = time.strftime("%Y%m%d%H")
-                AnnotationFile = os.path.join(self.datadir,'Annotations_{}.h5'.format(timestr))
-                with h5py.File(AnnotationFile,'w') as hf:
-                    hf.create_dataset("targets", data=self.targets,dtype='f')
-                    self.AnnotationFile = AnnotationFile
-            else:
-                # load current annotation file and append
-                with h5py.File(self.AnnotationFile,'r') as f:
-                    old = np.array(f.get('targets'))
-                self.targets = np.concatenate((old,self.targets),axis=0)
-                with h5py.File(self.AnnotationFile,'w') as hf:
-                    hf.create_dataset("targets", data=self.targets,dtype='f')
+            # block other progress bar updates
+            self.training = True
+                        
             # Generate model if not existant
             if self.model == []:                
-                self.disp_msg = 'Generating model...'
+                print('Generating model...')
                 self.graph = keras.backend.tf.get_default_graph()
                 with self.graph.as_default():
                     self.model = BlockModel(self.images.shape)
@@ -1026,7 +1001,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             print('Creating training thread...')
             # Start Training Thread
             self.train_thread = TrainThread(self.graph, self.model,
-                                        self.file_list, self.FNind, self.targets,
+                                        self.file_list, self.FNind, self.mask_list,
                                         self.cb_eStop,self.cb_check, self.model_path)
             self.train_thread.message_sig.connect(self.trainGotMessage)
             self.train_thread.model_sig.connect(self.trainGotModel)
@@ -1051,7 +1026,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.graph = graph
         
     def trainFinished(self):
-        self.EvalNextSubject()
+        self.training = False
+        self.EvalCurrentSubject()
         
     def trainError(self, msg):
         self.ui.progBar.setRange(0,1)
@@ -1070,9 +1046,14 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setValue(num)
         
         
-    def EvalNextSubject(self):
-        self.FNind = self.FNind + 1
-        self.ImportImages(True)
+    def EvalCurrentSubject(self):
+        self.disp_msg = 'Evaluating current subject'
+        self.ui.viewAxial.setEnabled(False)
+        self.seg_thread = SegThread(self.graph,self.images,self.segmask,self.model)
+        self.seg_thread.finished.connect(self.seg_finish)
+        self.seg_thread.segmask_sig.connect(self.seg_gotmask)
+        self.seg_thread.error_sig.connect(self.seg_error)
+        self.seg_thread.start()
                 
     def resetView(self,ev):
         self.vbox_ax.setRange(xRange=(0,self.volshape[2]),yRange=(0,self.volshape[1]))
@@ -1146,7 +1127,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         # kill threads
         try:
             self.train_thread.quit()
-        except Exception as e:
+        except Exception:
             pass
         # exit
         del self
@@ -1412,52 +1393,75 @@ class TrainThread(QThread):
     train_sig = pyqtSignal()
     batch_sig = pyqtSignal(int)
     
-    def __init__(self,graph,model,file_list,FNind,targets,
+    def __init__(self,graph,model,file_list,FNind,mask_list,
                  CBstop,CBcheck,model_path):
         QThread.__init__(self)
         self.graph = graph
         self.file_list = file_list
         self.FNind = FNind
         self.model = model
-        self.targets = targets
+        self.mask_list = mask_list
         self.CBs = [CBstop,CBcheck]
         self.model_path = model_path
         
     def __del__(self):
         self.terminate()
 
+    def GenerateMaskPath(self,FNind):
+        # generate mask file name
+        curFile = self.file_list[FNind]
+        fdir,fFN = os.path.split(curFile)
+        maskdir = os.path.join(fdir,'ItATMISmasks')
+        FN,ext = os.path.splitext(fFN)
+        maskFN = FN + '_mask' + ext
+        maskPath = os.path.join(maskdir,maskFN)
+        return maskPath
+
     def run(self):
         try:
             # load current images
             self.message_sig.emit('Loading inputs...')
-            # import first nifti
-            nft = nib.load(self.file_list[0])
+            # get list of files with masks
+            print(self.mask_list)
+            file_inds = np.arange(len(self.mask_list))[self.mask_list]
+            print(file_inds)
+            # import first nifti and mask
+            curind = file_inds[0]
+            nft = nib.load(self.file_list[curind])
+            masknft = nib.load(self.GenerateMaskPath(curind))
             # adjust orientation
             canon_nft = nib.as_closest_canonical(nft)
+            canon_masknft = nib.as_closest_canonical(masknft)
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+            mask = np.swapaxes(np.rollaxis(canon_masknft.get_data(),2,0),1,2)
             # normalize
             for im in ims:
                 im -= np.min(im)
                 im /= np.max(im)
             # add axis
             inputs = ims[...,np.newaxis]
+            targets = mask[...,np.newaxis]
             # import rest of niftis, if more than 1 subject
-            if self.FNind > 0:
-                for ss in range(1,self.FNind+1):
+            if len(file_inds) > 1:
+                for ss in file_inds[1:]:
                     # load next subject
                     nft = nib.load(self.file_list[ss])
+                    masknft = nib.load(self.GenerateMaskPath(curind))
                     # adjust orientation
                     canon_nft = nib.as_closest_canonical(nft)
+                    canon_masknft = nib.as_closest_canonical(masknft)
                     ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+                    mask = np.swapaxes(np.rollaxis(canon_masknft.get_data(),2,0),1,2)
                     for im in ims:
                         im -= np.min(im)
                         im /= np.max(im)
                     # add axis and concatenate to target array
                     inputs = np.concatenate((inputs,ims[...,np.newaxis]),axis=0)
+                    targets = np.concatenate((targets,mask[...,np.newaxis]),axis=0)
             
             # check for equal sizes
-            if self.targets.shape != inputs.shape:
-                print('Targets shape is:', self.targets.shape)
+            if targets.shape != inputs.shape:
+                print('Targets shape is:', targets.shape)
                 print('Inputs shape is:', inputs.shape)
                 raise ValueError('Input and target shape do not match')
                 
@@ -1468,9 +1472,9 @@ class TrainThread(QThread):
                                         np.round(.2*numIm).astype(np.int),
                                         replace=False)
             valX = np.take(inputs,val_inds,axis=0)
-            valY = np.take(self.targets,val_inds, axis=0)
+            valY = np.take(targets,val_inds, axis=0)
             trainX = np.delete(inputs, val_inds, axis=0)
-            trainY = np.delete(self.targets, val_inds, axis=0)
+            trainY = np.delete(targets, val_inds, axis=0)
             
             # save training data for testing
             TrainingFile = 'TrainingData.h5'
@@ -1509,7 +1513,8 @@ class TrainThread(QThread):
             datagen = zip( datagen1.flow( trainX, None, batchsize, seed=seed), datagen2.flow( trainY, None, batchsize, seed=seed) )
             
             # calculate number of epochs and batches
-            numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
+            # numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
+            numEp = 30
             steps = np.minimum(np.int(trainX.shape[0]/batchsize*8),1000)
             numSteps = steps*numEp
             
@@ -1569,10 +1574,11 @@ class SegThread(QThread):
     segmask_sig = pyqtSignal(np.ndarray)
     error_sig = pyqtSignal(str)
     
-    def __init__(self,graph,ims,model):
+    def __init__(self,graph,ims,mask,model):
         QThread.__init__(self)
         self.graph = graph
         self.ims = ims
+        self.mask = mask
         self.model = model
         
     def __del__(self):
@@ -1580,12 +1586,15 @@ class SegThread(QThread):
 
     def run(self):
         try:
+            # determine which slices have been segmented already
+            slice_inds = np.where(self.mask.any(axis=(1,2)))[0]
             inputs = self.ims[...,np.newaxis]
             
             with self.graph.as_default():
                 output = self.model.predict(inputs,batch_size=16,verbose=0)
                 
             mask = (output[...,0]>.5).astype(np.float)
+            mask[slice_inds,...] = self.mask[slice_inds,...]
                     
             self.segmask_sig.emit(mask)
         except Exception as e:
