@@ -1535,20 +1535,20 @@ class TrainThread(QThread):
             
             self.batch_sig.emit(100)    
             
-            keras.backend.clear_session()
-            keras.backend.tf.reset_default_graph()
+            # keras.backend.clear_session()
+            # keras.backend.tf.reset_default_graph()
                 
             self.message_sig.emit('Training Complete.')
             self.message_sig.emit('Loading best model...')
-            graph = keras.backend.tf.get_default_graph()
-            with graph.as_default():
+            # graph = keras.backend.tf.get_default_graph()
+            with self.graph.as_default():
                 self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
             
-            self.message_sig.emit('Evaluating on validation data...')
-            score = self.model.evaluate(valX,valY,verbose=0)
-            self.message_sig.emit('Dice Score: {:.2f}'.format(1-score))
+            # self.message_sig.emit('Evaluating on validation data...')
+            # score = self.model.evaluate(valX,valY,verbose=0)
+            # self.message_sig.emit('Dice Score: {:.2f}'.format(1-score))
             
-            self.model_sig.emit(self.model, graph)
+            self.model_sig.emit(self.model, self.graph)
             
         except Exception as e:
             self.error_sig.emit(str(e))
