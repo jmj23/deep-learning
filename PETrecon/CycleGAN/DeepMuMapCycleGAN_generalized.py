@@ -31,7 +31,8 @@ np.random.seed(seed=1)
 #~#~#~#~#~#~#~#~#~#~#~#~#~#~#~#
 
 # Model Save Path/name
-model_filepath = 'DeepMuMapCyleGAN_{}_model.h5'
+timestr = time.strftime("%Y%m%d%H%M")
+model_filepath = 'DeepMuMapCyleGAN_{}_model_{}.h5'.format('{}',timestr)
 
 # Data path/name
 datapath = 'CycleGAN_data_TVT.hdf5'
@@ -45,7 +46,7 @@ training = True
 lrD = 1e-5  # discriminator learning rate
 lrG = 1e-5  # generator learning rate
 λ = 10  # grad penalty weighting- leave alone
-C = 100  # Cycle Loss weighting
+C = 200  # Cycle Loss weighting
 
 # Discriminator parameters
 # number of downsampling blocks
@@ -68,30 +69,50 @@ CT_reg = True
 MR_reg = True
 
 # whether to plot progress images
-plot_prog = True
+plot_prog = False
 # whether to save progress gif after training
-gif_prog = True
+gif_prog = False
+# whether to just save loss plots rather than
+# displaying them
+savenodisplay = True
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 25000
+numIter = 80000
 # how many iterations between updating progress image
-progstep = 50
+progstep = 100
 # how many iterations between checking validation score
 # and saving model
 valstep = 100
 # batch size
-b_s = 8
+b_s = 16
 # validation batch size
-val_b_s = 8
+val_b_s = 16
 # training ratio between discriminator and generator
 train_rat = 5
+# whether to use learning rate decay
+LR_decay = False
+LR_period = np.int(numIter/5)
+
+
 # Whether or not to pretrain generators
-# Leave as false if data is not aligned
-L1pretrain = True
+# Leave as false if data is not roughly 
+# aligned and in order
+# Can turn pre training on or off with
+# command line argument
+# or just set the default
+# example: $ python DeepMuMapCycleGAN_generalized.py True
+if len(sys.argv) > 1:
+    L1pretrain = sys.argv[1].lower() == 'true'
+else:
+    # default pretrain setting if no argument provided    
+    L1pretrain = True
+    
 Dpretrain = True
-pretrain_epochs = 10
+pretrain_epochs = 5
 pretrain_lr = 1e-4
+
+    
 
 #%% Loading data
 # Load training, validation, and testing data
@@ -190,15 +211,18 @@ loss_CT2MR2CT = K.mean(K.abs(rec_CT-real_CT))
 # Discriminator training function
 loss_D = loss_CT + loss_MR
 weights_D = DisModel_CT.trainable_weights + DisModel_MR.trainable_weights
+
 D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(weights_D,[],loss_D)
-fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2],[loss_CT, loss_MR], D_trups)
+fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2,lrD],[loss_CT, loss_MR], D_trups)
 
 # Generator Training function
 loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR #+ C*loss_CT2MR2CT
 weights_G = GenModel_MR2CT.trainable_weights + GenModel_CT2MR.trainable_weights
+
 MR2CT_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], loss_G)
 # Generator training function returns MR2CT discriminator loss and MR2CT2MR cycle loss
-fn_trainG = K.function([real_MR,real_CT], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trups)
+
+fn_trainG = K.function([real_MR,real_CT,lrG], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trups)
 
 # validation evaluate function
 fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
@@ -331,7 +355,7 @@ if L1pretrain:
         errG = pretrain_fn([MR_batch, CT_batch])
         pre_gen_loss[ii] = errG
         # Update progress image
-        if ii % progstep == 0:
+        if plot_prog and ii % progstep == 0:
             samp_im = ProgressPlotPretrain(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
             pre_progress_ims[pg] = samp_im
             pg += 1
@@ -340,8 +364,9 @@ if L1pretrain:
         
     pre_t.close()
     del pre_t
+    
     print('Pretraining complete')
-    fig4 = plt.figure(4)
+    fig = plt.figure()
     plt.plot(np.arange(pre_numIter),-pre_dis_loss[:,0],
              np.arange(pre_numIter),-pre_dis_loss[:,1],
              np.arange(pre_numIter),100*pre_gen_loss[:,0],
@@ -352,7 +377,17 @@ if L1pretrain:
                 '100x MR2CT L1 Loss',
                 '100x Cycle loss'])
     plt.ylim([0,100])
-    plt.show()
+    if savenodisplay:
+        name = 'CycleGANpretrainLossPlot_{}.png'.format(timestr)
+        plt.save(name)
+    else:
+        plt.show()
+    
+    
+    # save pretraining
+    name = 'CycleGANpretrainLosses_{}.txt'.format(timestr)
+    data = (pre_dis_loss[:,0],pre_dis_loss[:,1],pre_gen_loss[:,0],pre_gen_loss[:,1])
+    np.savetxt(name,data)
 
 #%% training
 print('Starting training...')
@@ -397,12 +432,11 @@ for ii in t:
     # Train Generator
     errG = fn_trainG([MR_batch, CT_batch])
     gen_loss[ii] = errG
-    if plot_prog:
-        if ii % progstep == 0:
-            # progress image plotting
-            samp_im = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
-            progress_ims[gg] = samp_im
-            gg += 1
+    if plot_prog and ii % progstep == 0:
+        # progress image plotting
+        samp_im = ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax)
+        progress_ims[gg] = samp_im
+        gg += 1
     if (ii+1) % valstep ==0:
         tqdm.write('Checking validation loss...')
         for bb in range(0,templosses.shape[0]):
@@ -422,6 +456,15 @@ for ii in t:
             
         val_loss[vv] = cur_val_loss           
         vv +=1
+        
+        # save losses
+        name = 'CycleGANtrainLosses_{}.txt'.format(timestr)
+        data = (dis_loss[:,0],dis_loss[:,1],gen_loss[:,0],gen_loss[:,1])
+        np.savetxt(name,data)
+        
+    if LR_decay and (ii) % LR_period == 0:
+        print('Updated generator learning rate to {:.3g}'.format(lrG))
+        print('Updated discriminator learning rate to {:.3g}'.format(lrD))
         
     t.set_postfix(Dloss=dis_loss[ii,0],CycleLoss = gen_loss[ii,1])
     
@@ -448,7 +491,7 @@ print('Backup Models saved')
 # smoothed since it's usually pretty rocky
 # the L1 losses are multipled by 1000 to match scale
 from scipy.signal import medfilt
-fig5 = plt.figure(6)
+fig = plt.figure()
 plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],5),
          np.arange(numIter),-medfilt(dis_loss[:,1],5),
          np.arange(numIter),medfilt(1000*gen_loss[:,1],5),
@@ -458,7 +501,11 @@ plt.legend(['-Discriminator CT Loss',
             '1000x Cycle Loss',
             '1000x Validation Cycle loss'])
 plt.ylim([0,60])
-plt.show()
+if savenodisplay:
+    name = 'CycleGANtrainLossPlot_{}.png'.format(timestr)
+    plt.save(name)
+else:
+    plt.show()
 
 #%%
 print('Generating samples')
@@ -490,15 +537,16 @@ CTtest = GenModel_MR2CT.predict(test_MR)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/test_MR.shape[0],' ms per slice')
 
-# Display progress images, if they exist
-
+# Display progress images, if created
 if plot_prog:
     if L1pretrain:
         progress_ims = np.concatenate((pre_progress_ims,progress_ims),axis=0)
+        output_file = 'ProgressIms_w_pretrain_{}.gif'.format(timestr)
+    else:
+        output_file = 'ProgressIms_{}.gif'.format(timestr)
     multi_slice_viewer0(progress_ims,'Training Progress Images')
     
     # save progress ims to gif
-    output_file = 'ProgressIms.gif'
     gif_ims = np.copy(progress_ims)
     gif_ims[gif_ims<0] = 0
     gif_ims[gif_ims>1] = 1
