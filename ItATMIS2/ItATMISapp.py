@@ -515,7 +515,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             bump = -event.angleDelta().y()/120
             fac = 1+.1*bump
             pos = self.vbox_ax.mapToView(event.pos())
+            z = self.inds[0]
+            print(pos.x(),pos.y(),z)
             self.vbox_ax.scaleBy(s=fac,center=(pos.x(),pos.y()))
+            self.vbox_cor.scaleBy(s=fac,center=(pos.x(),z))
+            self.vbox_sag.scaleBy(s=fac,center=(pos.y(),z))
             event.accept()
         else:
             curval = self.ui.slideAx.value()
