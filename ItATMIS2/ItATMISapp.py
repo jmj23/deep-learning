@@ -5,6 +5,7 @@ from PyQt5.QtCore import pyqtProperty,pyqtSignal, QThread, Qt
 from PyQt5.QtGui import QCursor
 import pyqtgraph as pg
 import numpy as np
+import json
 from scipy.ndimage import median_filter
 from scipy.ndimage.morphology import binary_fill_holes
 # watershed methods
@@ -36,7 +37,7 @@ from keras.layers import Input, Cropping2D, Conv2D, concatenate
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D
 from keras.layers.advanced_activations import ELU
-from keras.models import Model
+from keras.models import Model, model_from_json
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.optimizers import Adam
 import keras.backend as K
@@ -114,7 +115,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.AnnotationFile = []
             # deep learning model
             self.model = []
-            self.model_path = []
+            self.model_arch_path = []
+            self.model_weights_path = []
             # output from CNN
             self.segOutput = []
             # spatial resolution of images
@@ -137,10 +139,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.cb_eStop = EarlyStopping(monitor='val_loss',patience=3,
                                           verbose=1,mode='auto')
             self.cb_check = []
-            # Set keras optimizer
+            # Reset keras graph
             keras.backend.tf.reset_default_graph()
             keras.backend.clear_session()
-            self.adopt = Adam()
+            
             
             # Initialize or load config file
             if os.path.isfile(self.configFN):
@@ -186,8 +188,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 # convert strings to ascii
                 file_list_ascii = [n.encode("ascii", "ignore") for n in self.file_list]
                 datadir_ascii = [self.datadir.encode("ascii", "ignore")]
-                if not self.model_path == []:
-                    modelpath_ascii = [self.model_path.encode("ascii","ignore")]
+                if not self.model_arch_path == []:
+                    model_arch_path_ascii = [self.model_arch_path.encode("ascii","ignore")]
+                    model_weights_path_ascii = [self.model_weights_path.encode("ascii","ignore")]
                 if not self.AnnotationFile == []:
                     annotationfile_ascii = [self.AnnotationFile.encode("ascii","ignore")]
                 dt = h5py.special_dtype(vlen=bytes)
@@ -205,8 +208,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     hf.create_dataset("file_list", (len(file_list_ascii),1),dt, file_list_ascii)
                     hf.create_dataset("mask_list",data=np.array(self.mask_list),dtype=bool)
                     hf.create_dataset("datadir", (len(datadir_ascii),1),dt,datadir_ascii)
-                    if not self.model_path == []:
-                        hf.create_dataset("model_path", (len(modelpath_ascii),1),dt,modelpath_ascii)
+                    if not self.model_arch_path == []:
+                        hf.create_dataset("model_arch_path", (len(model_arch_path_ascii),1),dt,model_arch_path_ascii)
+                        hf.create_dataset("model_weights_path", (len(model_weights_path_ascii),1),dt,model_weights_path_ascii)
                     if not self.AnnotationFile == []:
                         hf.create_dataset("annotation_file",(len(annotationfile_ascii),1),dt,annotationfile_ascii)
                     hf.create_dataset("FNind",data=self.FNind,dtype=np.int)
@@ -268,9 +272,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.mask_list = list(hf.get('mask_list'))
                 datadir_temp = hf.get('datadir')
                 self.datadir = datadir_temp[0][0].decode('utf-8')
-                if 'model_path' in list(hf.keys()):
-                    modelpath_temp = hf.get('model_path')
-                    self.model_path = modelpath_temp[0][0].decode('utf-8')
+                if 'model_weights_path' in list(hf.keys()):
+                    modelpath_temp = hf.get('model_weights_path')
+                    self.model_weights_path = modelpath_temp[0][0].decode('utf-8')
+                    modelpath_temp = hf.get('model_arch_path')
+                    self.model_arch_path = modelpath_temp[0][0].decode('utf-8')
                 if 'annotation_file' in list(hf.keys()):
                     annotationfile_temp = hf.get('annotation_file')
                     self.AnnotationFile = annotationfile_temp[0][0].decode('utf-8')
@@ -278,13 +284,18 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 print(self.FNind)
                 self.targets = np.array(hf.get('targets'))
 
-            if not self.model_path == []:
+            if not self.model_weights_path == []:
                 # load model
                 self.disp_msg = 'Loading saved model...'
                 keras.backend.clear_session()
                 self.graph = keras.backend.tf.get_default_graph()
                 with self.graph.as_default():
-                    self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
+                    with open(self.model_arch_path,'r') as file:
+                        json_string = json.load(file)
+                    self.model = model_from_json(json_string)
+                    self.model.load_weights(self.model_weights_path)
+                    self.adopt = Adam()
+                    self.model.compile(optimizer=self.adopt, loss=dice_loss)
             
             # initialize display
             self.InitDisplay()
@@ -978,31 +989,41 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.progBar.setRange(0,0)
             # block other progress bar updates
             self.training = True
-                        
+            
+            if self.model_arch_path == []:
+                timestr = time.strftime("%Y%m%d%H")
+                self.model_weights_path = os.path.join(self.datadir,'ItATMISmodel_{}.h5'.format(timestr))
+                self.model_arch_path = os.path.join(self.datadir,'ItATMISmodel_{}.txt'.format(timestr))
+
             # Generate model if not existant
             if self.model == []:                
                 print('Generating model...')
                 self.graph = keras.backend.tf.get_default_graph()
                 with self.graph.as_default():
-                    self.model = BlockModel(self.images.shape)
+                    # create optimizer
+                    self.adopt = Adam()
+                    # create model
+                    self.model = BlockModel(self.images.shape,num_out_channels=self.numClasses)
+                    # save architecture
+                    json_model = self.model.to_json()
+                    with open(self.model_arch_path,'w') as file:
+                        json.dump(json_model,file)
+
                 self.model.compile(optimizer=self.adopt, loss=dice_loss)
                 
             # Set checkpoint callback if not already set
             if self.cb_check == []:
                 print('Making callback...')
-                if self.model_path == []:
-                    timestr = time.strftime("%Y%m%d%H")
-                    self.model_path = os.path.join(self.datadir,'ItATMISmodel_{}.h5'.format(timestr))
-                self.cb_check = ModelCheckpoint(self.model_path,monitor='val_loss',
+                self.cb_check = ModelCheckpoint(self.model_weights_path,monitor='val_loss',
                                            verbose=0,save_best_only=True,
-                                           save_weights_only=False,
+                                           save_weights_only=True,
                                            mode='auto',period=1)
             
             print('Creating training thread...')
             # Start Training Thread
             self.train_thread = TrainThread(self.graph, self.model,
                                         self.file_list, self.FNind, self.mask_list,
-                                        self.cb_eStop,self.cb_check, self.model_path)
+                                        self.cb_eStop,self.cb_check, self.model_weights_path)
             self.train_thread.message_sig.connect(self.trainGotMessage)
             self.train_thread.model_sig.connect(self.trainGotModel)
             self.train_thread.finished.connect(self.trainFinished)
@@ -1133,7 +1154,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         del self
 
 #%%
-def BlockModel(in_shape,filt_num=16,numBlocks=4):
+def BlockModel(in_shape,filt_num=16,numBlocks=4,num_out_channels=1):
     input_shape = in_shape[1:]+(1,)
     lay_input = Input(shape=(input_shape),name='input_layer')
     
@@ -1217,7 +1238,7 @@ def BlockModel(in_shape,filt_num=16,numBlocks=4):
     lay_pad = ZeroPadding2D(padding=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_act)
         
     # segmenter
-    lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
+    lay_out = Conv2D(num_out_channels,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
     
     return Model(lay_input,lay_out)
 #%% Dice Coefficient Loss
@@ -1541,8 +1562,9 @@ class TrainThread(QThread):
             self.message_sig.emit('Training Complete.')
             self.message_sig.emit('Loading best model...')
             # graph = keras.backend.tf.get_default_graph()
-            with self.graph.as_default():
-                self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
+            # with self.graph.as_default():
+                # self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
+            self.model.load_weights(self.model_path)
             
             # self.message_sig.emit('Evaluating on validation data...')
             # score = self.model.evaluate(valX,valY,verbose=0)

@@ -17,5 +17,6 @@ h5py
 time
 scipy
 contextlib
+json
 
 ## Requirements with version specifiers ##
