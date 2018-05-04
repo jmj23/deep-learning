@@ -863,6 +863,19 @@
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="pb_Evaluate">
+           <property name="maximumSize">
+            <size>
+             <width>200</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Evaluate Current Subject</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QListWidget" name="listDisp">
            <property name="maximumSize">
             <size>
@@ -1066,7 +1079,7 @@
     <string>Quick Select Mode</string>
    </property>
    <property name="shortcut">
-    <string>Shift+Q</string>
+    <string>P</string>
    </property>
   </action>
  </widget>

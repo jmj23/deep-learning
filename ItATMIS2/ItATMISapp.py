@@ -74,6 +74,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.ui.actionQuick_Select.triggered.connect(self.quick_select)
             self.ui.pb_SelectData.clicked.connect(self.DataSelect)
             self.ui.pb_Train.clicked.connect(self.Train)
+            self.ui.pb_Evaluate.clicked.connect(self.EvalCurrentSubject)
             self.ui.listFiles.itemClicked.connect(self.FileListClick)
             self.ui.listFiles.itemDoubleClicked.connect(self.FileListSelect)
             
@@ -83,7 +84,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # initialize some variables
             # configuration file name
             self.configFN = 'config.ini'
-            # list of files to be included in processing            
+            # list of files to be included in processing
             self.file_list = []
             # list of indices of files that have masks created
             self.mask_list = []
@@ -392,7 +393,21 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # buffer for view lines
             buff = 10
             self.buff = np.round(np.array(buff/self.spatres)).astype(np.int16)
-            # self.buff = np.array([2,4,2])
+            # axial view lines
+            self.line_ax_cor = pg.PlotDataItem(pen='y',connect='pairs')
+            self.line_ax_cor.setData(x = np.array([0,midinds[2]-self.buff[2],midinds[2]+self.buff[2],imshape[2]]),
+                                     y = np.array([midinds[1],midinds[1],midinds[1],midinds[1]]))
+            self.vbox_ax.addItem(self.line_ax_cor)
+            
+            self.line_ax_sag = pg.PlotDataItem(pen='y',connect='pairs')
+            self.line_ax_sag.setData(x = np.array([midinds[1],midinds[1],midinds[1],midinds[1]]),
+                                     y = np.array([0,midinds[2]-self.buff[2],midinds[2]+self.buff[2],imshape[2]]))
+            self.vbox_ax.addItem(self.line_ax_sag)
+
+            # hide when not in use
+            self.line_ax_cor.setAlpha(0,False)
+            self.line_ax_sag.setAlpha(0,False)
+
             # coronal view lines
             self.line_cor_ax = pg.PlotDataItem(pen='y',connect='pairs')
             self.line_cor_ax.setData(x = np.array([0,midinds[2]-self.buff[2],midinds[2]+self.buff[2],imshape[2]]),
@@ -486,6 +501,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.msk_item_sag.setImage(self.mask[:,:,self.inds[2],...])
         
     def updateLines(self):
+        self.line_ax_cor.setData(x = np.array([0,self.inds[2]-self.buff[2],self.inds[2]+self.buff[2],self.volshape[2]]),
+                                y = np.array([self.inds[1],self.inds[1],self.inds[1],self.inds[1]]))
+        self.line_ax_sag.setData(x = np.array([self.inds[2],self.inds[2],self.inds[2],self.inds[2]]),
+                                  y = np.array([0,self.inds[1]-self.buff[1],self.inds[1]+self.buff[1],self.volshape[1]]))
+
         self.line_cor_ax.setData(x = np.array([0,self.inds[2]-self.buff[2],self.inds[2]+self.buff[2],self.volshape[2]]),
                                  y = np.array([self.inds[0],self.inds[0],self.inds[0],self.inds[0]]))
         self.line_cor_sag.setData(x = np.array([self.inds[2],self.inds[2],self.inds[2],self.inds[2]]),
@@ -516,7 +536,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             fac = 1+.1*bump
             pos = self.vbox_ax.mapToView(event.pos())
             z = self.inds[0]
-            print(pos.x(),pos.y(),z)
             self.vbox_ax.scaleBy(s=fac,center=(pos.x(),pos.y()))
             self.vbox_cor.scaleBy(s=fac,center=(pos.x(),z))
             self.vbox_sag.scaleBy(s=fac,center=(pos.y(),z))
@@ -562,6 +581,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     
     def corDragEvent(self,ev):
         if ev.button()==1:
+            if ev.isStart():
+                self.line_ax_cor.setAlpha(1,False)
+                self.line_ax_sag.setAlpha(1,False)
+            elif ev.isFinish():
+                self.line_ax_cor.setAlpha(0,False)
+                self.line_ax_sag.setAlpha(0,False)
             posx = ev.pos().x()
             posy = ev.pos().y()
             self.corMove(posx,posy)
@@ -595,6 +620,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             
     def sagDragEvent(self,ev):
         if ev.button()==1:
+            if ev.isStart():
+                self.line_ax_cor.setAlpha(1,False)
+                self.line_ax_sag.setAlpha(1,False)
+            elif ev.isFinish():
+                self.line_ax_cor.setAlpha(0,False)
+                self.line_ax_sag.setAlpha(0,False)
             posx = ev.pos().x()
             posy = ev.pos().y()
             self.sagMove(posx,posy)
@@ -1419,7 +1450,7 @@ class TrainThread(QThread):
     batch_sig = pyqtSignal(int)
     
     def __init__(self,graph,model,file_list,FNind,mask_list,
-                 CBstop,CBcheck,model_path):
+                 CBstop,CBcheck,model_weights_path):
         QThread.__init__(self)
         self.graph = graph
         self.file_list = file_list
@@ -1427,7 +1458,7 @@ class TrainThread(QThread):
         self.model = model
         self.mask_list = mask_list
         self.CBs = [CBstop,CBcheck]
-        self.model_path = model_path
+        self.model_weights_path = model_weights_path
         
     def __del__(self):
         self.terminate()
@@ -1568,7 +1599,9 @@ class TrainThread(QThread):
             # graph = keras.backend.tf.get_default_graph()
             # with self.graph.as_default():
                 # self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
-            self.model.load_weights(self.model_path)
+
+            with self.graph.as_default():
+                self.model.load_weights(self.model_weights_path)
             
             # self.message_sig.emit('Evaluating on validation data...')
             # score = self.model.evaluate(valX,valY,verbose=0)
