@@ -68,6 +68,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # self.ui.actionSaveModel.triggered.connect(self.saveCor)
             self.ui.actionReset_View.triggered.connect(self.resetView)
             self.ui.actionUndo.triggered.connect(self.undo)
+            self.ui.actionUndo.setEnabled(False)
             self.ui.actionClear_Mask.triggered.connect(self.clearMask)
             self.ui.action_Save_Data.triggered.connect(self.data_save)
             self.ui.action_Load_Data.triggered.connect(self.data_load)
@@ -96,6 +97,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.images = []
             # current segmentation mask
             self.segmask = []
+            # list of undos
+            self.segmask_undos = []
+            # maximum number of undos
+            self.max_undo = 10
             # current affine matrix
             self.niftiAff = []
             # current mask for current images
@@ -200,7 +205,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 with h5py.File(save_path[0],'w') as hf:
                     hf.create_dataset("ItATMISfile",data=True,dtype=np.bool)
                     hf.create_dataset("images",data=self.images,dtype=np.float)
-                    hf.create_dataset("segmask",data=self.segmask,dtype=np.float)
+                    hf.create_dataset("segmask",data=self.segmask,dtype=np.int)
                     hf.create_dataset("WSseg",data=self.WSseg,dtype=np.int)
                     hf.create_dataset("inds",data=self.inds,dtype=np.int)
                     hf.create_dataset("spatres",data=self.spatres,dtype=np.float)
@@ -710,6 +715,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
 
     def axClickEvent(self,ev):
         if ev.button()==1 or ev.button()==2:
+            # update undo list
+            self.ui.actionUndo.setEnabled(True)
+            self.segmask_undos.append(np.copy(self.segmask))
+            if len(self.segmask_undos)>self.max_undo:
+                _ = self.segmask_undos.pop(0)
             self.curmask = self.segmask[self.inds[0],...]
             posx = ev.pos().x()
             posy = ev.pos().y()
@@ -727,6 +737,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def axDragEvent(self,ev):
         if ev.button()==1 or ev.button()==2:
             if ev.isStart():
+                # update undo list
+                self.ui.actionUndo.setEnabled(True)
+                self.segmask_undos.append(np.copy(self.segmask))
+                if len(self.segmask_undos)>self.max_undo:
+                    _ = self.segmask_undos.pop(0)
                 self.curmask = self.segmask[self.inds[0],...]
                 self.curws = self.WSseg[self.inds[0],...]
                 self.prev_mask = np.copy(self.curmask)
@@ -846,10 +861,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
 
     def undo(self):
         try:
-            temp = np.copy(self.prev_mask)
-            self.prev_mask = np.copy(self.segmask[self.inds[0],...])
-            self.segmask[self.inds[0],...] = temp
-            self.updateIms()
+            if len(self.segmask_undos)>0:
+                self.segmask = self.segmask_undos.pop(-1)
+                self.mask[...,3] = self.alph*self.segmask
+                self.updateIms()
+            if len(self.segmask_undos) == 0:
+                self.ui.actionUndo.setEnabled(False)
         except Exception as e:
             print(e)
             print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
@@ -910,7 +927,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         # only if mask has annotations
         if not np.sum(self.segmask)==0:
             # create nifti image with same affine
-            data = np.swapaxes(np.rollaxis(self.segmask,2,0),1,2)
+            data = np.swapaxes(np.rollaxis(self.segmask,2,0),1,2).astype(np.int)
             img = nib.Nifti1Image(data, self.niftiAff)
             # generate mask file name
             curFile = self.file_list[self.FNind]
@@ -1311,7 +1328,7 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             if len(full_path)==0:
                 return
             filedir,FN = os.path.split(full_path)
-            FN,ext = os.path.splitext(FN)
+            FN,_ = os.path.splitext(FN)
             
             # generate file names
             self.parent.datadir = filedir
@@ -1352,17 +1369,18 @@ class DataSelect(QtBaseClass2,Ui_DataSelect):
             print(e)
             
     def setSelect(self):
-        self.parent.numClasses = self.ui.spinBox.value()
-        print('Number of classes selected is',self.parent.numClasses)
-        self.parent.ui.spinClass.setMaximum(self.parent.numClasses)
-        self.parent.file_list = self.FNs
-        self.parent.mask_list = [False]*len(self.FNs)
-        self.parent.UpdateFNlist()
-        self.parent.disp_msg = 'Files selected'
-        self.parent.saved = False
-        self.hide()
-        self.parent.ImportImages(False)
-        self.destroy()
+        if not len(self.FNs) == 0:
+            self.parent.numClasses = self.ui.spinBox.value()
+            print('Number of classes selected is',self.parent.numClasses)
+            self.parent.ui.spinClass.setMaximum(self.parent.numClasses)
+            self.parent.file_list = self.FNs
+            self.parent.mask_list = [False]*len(self.FNs)
+            self.parent.UpdateFNlist()
+            self.parent.disp_msg = 'Files selected'
+            self.parent.saved = False
+            self.hide()
+            self.parent.ImportImages(False)
+            self.destroy()
 
 
 #%%
@@ -1424,13 +1442,13 @@ class NiftiImportThread(QThread):
             if os.path.exists(maskPath):
                 try:
                     segnft = nib.as_closest_canonical(nib.load(maskPath))
-                    segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2)
+                    segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2).astype(np.int)
                 except Exception as e:
                     print(e)
                     self.segmask_error.emit('Unable to load mask')
-                    segmask = np.zeros_like(ims)
+                    segmask = np.zeros_like(ims,np.int)
             else:
-                segmask = np.zeros_like(ims)
+                segmask = np.zeros_like(ims,np.int)
             
             self.WS_sig.emit(WSseg)
             self.images_sig.emit(ims,segmask,self.segAfter)
@@ -1595,7 +1613,7 @@ class TrainThread(QThread):
             # keras.backend.tf.reset_default_graph()
                 
             self.message_sig.emit('Training Complete.')
-            self.message_sig.emit('Loading best model...')
+            # self.message_sig.emit('Loading best model...')
             # graph = keras.backend.tf.get_default_graph()
             # with self.graph.as_default():
                 # self.model = load_model(self.model_path,custom_objects={'dice_loss':dice_loss})
@@ -1652,7 +1670,7 @@ class SegThread(QThread):
             with self.graph.as_default():
                 output = self.model.predict(inputs,batch_size=16,verbose=0)
                 
-            mask = (output[...,0]>.5).astype(np.float)
+            mask = (output[...,0]>.5).astype(np.int)
             mask[slice_inds,...] = self.mask[slice_inds,...]
                     
             self.segmask_sig.emit(mask)

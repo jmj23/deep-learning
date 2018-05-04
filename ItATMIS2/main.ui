@@ -516,7 +516,7 @@
          </size>
         </property>
         <property name="frameShape">
-         <enum>QFrame::Panel</enum>
+         <enum>QFrame::WinPanel</enum>
         </property>
         <property name="frameShadow">
          <enum>QFrame::Raised</enum>
@@ -526,7 +526,7 @@
         </property>
         <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,0,0,0,0">
          <property name="spacing">
-          <number>3</number>
+          <number>2</number>
          </property>
          <property name="leftMargin">
           <number>0</number>
@@ -664,7 +664,7 @@
            <property name="maximumSize">
             <size>
              <width>150</width>
-             <height>30</height>
+             <height>25</height>
             </size>
            </property>
            <property name="font">
@@ -694,7 +694,7 @@
            <property name="maximumSize">
             <size>
              <width>200</width>
-             <height>25</height>
+             <height>20</height>
             </size>
            </property>
            <property name="cursor">
