@@ -43,6 +43,7 @@ from keras.optimizers import Adam
 import keras.backend as K
 from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
+from keras.utils.np_utils import to_categorical
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
@@ -381,16 +382,21 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
 
             # create empty segmask
             if self.segmask == []:
-                self.segmask = np.zeros(self.images.shape)
+                segsz = self.images.shape
+                self.segmask = np.zeros(segsz)
             
             # create empty display mask
+            print('Creating mask...')
             msksiz = np.r_[self.volshape,4]
             msk = np.zeros(msksiz,dtype=np.float)
-            msk[...,0] = 1
-            msk[...,1] = 1
-            msk[...,2] = 0
-            msk[...,3] = self.alph*self.segmask
+            for cc in range(self.numClasses):
+                print('Creating color',cc)
+                colA = np.r_[self.GetColor(cc),self.alph]
+                segmask_curclass = self.segmask==cc+1
+                msk[segmask_curclass,:] = colA
             self.mask = msk
+            print('Done creating mask')
+
             self.msk_item_ax.setImage(self.mask[midinds[0],...])
             self.msk_item_cor.setImage(self.mask[:,midinds[1],...])
             self.msk_item_sag.setImage(self.mask[:,:,midinds[2],...])
@@ -526,8 +532,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.img_item_ax.setImage(self.images[ev,...],autoLevels=False)
             self.msk_item_ax.setImage(self.mask[ev,...])
             self.inds[0] = ev
-            # update undo mask
-            self.prev_mask = np.copy(self.segmask[ev,...])
             self.updateLines()
             
         except Exception as e:
@@ -720,14 +724,20 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.segmask_undos.append(np.copy(self.segmask))
             if len(self.segmask_undos)>self.max_undo:
                 _ = self.segmask_undos.pop(0)
-            self.curmask = self.segmask[self.inds[0],...]
+            self.curclass = self.ui.spinClass.value()
+            print('Current class is:',self.curclass)
+            self.curmask = self.segmask[self.inds[0]]==self.curclass
+            print('Segmask size:',self.segmask.shape)
+            print('curmask size',self.curmask.shape)
             posx = ev.pos().x()
             posy = ev.pos().y()
             self.bt = ev.button()
             self.axMove(posx,posy)
             fmask = binary_fill_holes(self.curmask)
-            self.segmask[self.inds[0],...] = fmask
-            self.mask[self.inds[0],...,3] = self.alph*fmask
+            self.segmask[self.inds[0],self.segmask[self.inds[0]]==self.curclass] = 0
+            self.segmask[self.inds[0],fmask] = self.curclass
+            colA = np.r_[self.GetColor(self.curclass),self.alph]
+            self.mask[self.inds[0],fmask,:] = colA
             self.updateIms()
             self.saved = False
             ev.accept()
@@ -742,8 +752,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.segmask_undos.append(np.copy(self.segmask))
                 if len(self.segmask_undos)>self.max_undo:
                     _ = self.segmask_undos.pop(0)
-                self.curmask = self.segmask[self.inds[0],...]
-                self.curws = self.WSseg[self.inds[0],...]
+                self.curclass = self.ui.spinClass.value()
+                print('Current class is:',self.curclass)
+                self.curmask = self.segmask[self.inds[0]] == self.curclass
+                self.curws = self.WSseg[self.inds[0]]
                 self.prev_mask = np.copy(self.curmask)
                 self.bt = ev.button()
                 posx = ev.pos().x()
@@ -751,8 +763,10 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.axMove(posx,posy)
             elif ev.isFinish():
                 fmask = binary_fill_holes(self.curmask)
-                self.segmask[self.inds[0],...] = fmask
-                self.mask[self.inds[0],...,3] = self.alph*fmask
+                self.segmask[self.inds[0],self.segmask[self.inds[0]]==self.curclass] = 0
+                self.segmask[self.inds[0],fmask] = self.curclass
+                colA = np.r_[self.GetColor(self.curclass),self.alph]
+                self.mask[self.inds[0],fmask,:] = colA
                 self.updateIms()
                 self.saved = False
             else:
@@ -812,7 +826,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 cmask[lby:uby,lbx:ubx] = reg
                 
         self.curmask = cmask
-        self.mask[self.inds[0],...,3] = self.alph*cmask
+        colA = np.r_[self.GetColor(self.curclass),self.alph]
+        self.mask[self.inds[0],cmask,:] = colA
         self.msk_item_ax.setImage(self.mask[self.inds[0],...])
     
     def quickDraw(self,x,y):
@@ -963,7 +978,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         if not self.training:
             self.ui.progBar.setVisible(True)
             self.ui.progBar.setRange(0,0)
-        self.imp_thread = NiftiImportThread(curFN,segAfter)
+        self.imp_thread = NiftiImportThread(curFN,segAfter,self.numClasses)
         self.imp_thread.finished.connect(self.imp_finish_imp)
         self.imp_thread.data_sig.connect(self.gotData)
         self.imp_thread.WS_sig.connect(self.gotWSseg)
@@ -1136,7 +1151,18 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.img_item_cor.setImage(self.images[:,self.inds[1],:],autoLevels=True)
         self.img_item_sag.setImage(self.images[:,:,self.inds[2]],autoLevels=True)
         
-            
+    #%%
+    def GetColor(self,ind):
+        colors = np.array([
+            [1,1,0],
+            [0,1,0],
+            [1,0,0],
+            [0,0,1],
+            [0,1,1],
+            [1,0,1]
+            ])
+        return colors[ind-1]
+
     def saveConfig(self):
         self.config['DEFAULT']['data directory'] = self.datadir
         with open(self.configFN, 'w') as configfile:
@@ -1144,7 +1170,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         
     @pyqtProperty(str)
     def disp_msg(self):
-            return self.disp_msg
+        return self.disp_msg
     @disp_msg.setter
     def disp_msg(self, value):
         self._disp_msg = value
@@ -1159,7 +1185,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         
     @pyqtProperty(str)
     def error_msg(self):
-            return self._error_msg
+        return self._error_msg
     @error_msg.setter
     def error_msg(self, value):
         self._error_msg = value
@@ -1175,7 +1201,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     
     @pyqtProperty(bool)
     def saved(self):
-            return self._saved
+        return self._saved
     @saved.setter
     def saved(self, value):
         self._saved = value
@@ -1300,7 +1326,7 @@ def dice_loss(y_true, y_pred):
     intersection = K.sum(y_true_f * y_pred_f)
     dice = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
     return 1-dice
-    
+
 #%% Dice Multiclass Loss
 def dice_multi_loss(y_true,y_pred):
     y_true_f = K.flatten(y_true)
@@ -1398,10 +1424,11 @@ class NiftiImportThread(QThread):
     WS_sig = pyqtSignal(np.ndarray)
     errorsig = pyqtSignal()
     segmask_error = pyqtSignal(str)
-    def __init__(self,FN,segAfter):
+    def __init__(self,FN,segAfter,numClasses):
         QThread.__init__(self)
         self.FN = FN
         self.segAfter = segAfter
+        self.numClasses = numClasses
 
     def __del__(self):
         self.wait()
@@ -1450,13 +1477,13 @@ class NiftiImportThread(QThread):
             if os.path.exists(maskPath):
                 try:
                     segnft = nib.as_closest_canonical(nib.load(maskPath))
-                    segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2).astype(np.int)
+                    segmask_ind = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2).astype(np.int)
                 except Exception as e:
                     print(e)
                     self.segmask_error.emit('Unable to load mask')
-                    segmask = np.zeros_like(ims,np.int)
+                    segmask = np.zeros_like(ims,dtype=np.int)
             else:
-                segmask = np.zeros_like(ims,np.int)
+                segmask = np.zeros_like(ims,dtype=np.int)
             
             self.WS_sig.emit(WSseg)
             self.images_sig.emit(ims,segmask,self.segAfter)
