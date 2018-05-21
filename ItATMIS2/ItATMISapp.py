@@ -386,16 +386,13 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.segmask = np.zeros(segsz)
             
             # create empty display mask
-            print('Creating mask...')
             msksiz = np.r_[self.volshape,4]
             msk = np.zeros(msksiz,dtype=np.float)
             for cc in range(self.numClasses):
-                print('Creating color',cc)
                 colA = np.r_[self.GetColor(cc),self.alph]
                 segmask_curclass = self.segmask==cc+1
                 msk[segmask_curclass,:] = colA
             self.mask = msk
-            print('Done creating mask')
 
             self.msk_item_ax.setImage(self.mask[midinds[0],...])
             self.msk_item_cor.setImage(self.mask[:,midinds[1],...])
@@ -727,17 +724,16 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             self.curclass = self.ui.spinClass.value()
             print('Current class is:',self.curclass)
             self.curmask = self.segmask[self.inds[0]]==self.curclass
-            print('Segmask size:',self.segmask.shape)
-            print('curmask size',self.curmask.shape)
             posx = ev.pos().x()
             posy = ev.pos().y()
             self.bt = ev.button()
             self.axMove(posx,posy)
             fmask = binary_fill_holes(self.curmask)
+            colA = np.r_[self.GetColor(self.curclass),self.alph]
+            self.mask[self.inds[0],self.segmask[self.inds[0]]==self.curclass,:] = 0
+            self.mask[self.inds[0],fmask,:] = colA
             self.segmask[self.inds[0],self.segmask[self.inds[0]]==self.curclass] = 0
             self.segmask[self.inds[0],fmask] = self.curclass
-            colA = np.r_[self.GetColor(self.curclass),self.alph]
-            self.mask[self.inds[0],fmask,:] = colA
             self.updateIms()
             self.saved = False
             ev.accept()
@@ -763,10 +759,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 self.axMove(posx,posy)
             elif ev.isFinish():
                 fmask = binary_fill_holes(self.curmask)
+                colA = np.r_[self.GetColor(self.curclass),self.alph]
+                self.mask[self.inds[0],self.segmask[self.inds[0]]==self.curclass] = 0
+                self.mask[self.inds[0],fmask,:] = colA
                 self.segmask[self.inds[0],self.segmask[self.inds[0]]==self.curclass] = 0
                 self.segmask[self.inds[0],fmask] = self.curclass
-                colA = np.r_[self.GetColor(self.curclass),self.alph]
-                self.mask[self.inds[0],fmask,:] = colA
                 self.updateIms()
                 self.saved = False
             else:
@@ -822,8 +819,9 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 reg = np.maximum(pbrush,reg)
                 cmask[lby:uby,lbx:ubx] = reg          
             else:
+                self.mask[self.inds[0],cmask,:] = 0
                 reg = np.minimum(1-np.minimum(pbrush,reg),reg)
-                cmask[lby:uby,lbx:ubx] = reg
+                cmask[lby:uby,lbx:ubx] = reg                
                 
         self.curmask = cmask
         colA = np.r_[self.GetColor(self.curclass),self.alph]
@@ -1477,7 +1475,7 @@ class NiftiImportThread(QThread):
             if os.path.exists(maskPath):
                 try:
                     segnft = nib.as_closest_canonical(nib.load(maskPath))
-                    segmask_ind = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2).astype(np.int)
+                    segmask = np.swapaxes(np.rollaxis(segnft.get_data(),2,0),1,2).astype(np.int)
                 except Exception as e:
                     print(e)
                     self.segmask_error.emit('Unable to load mask')
