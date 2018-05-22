@@ -389,7 +389,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             msksiz = np.r_[self.volshape,4]
             msk = np.zeros(msksiz,dtype=np.float)
             for cc in range(self.numClasses):
-                colA = np.r_[self.GetColor(cc),self.alph]
+                colA = np.r_[self.GetColor(cc+1),self.alph]
                 segmask_curclass = self.segmask==cc+1
                 msk[segmask_curclass,:] = colA
             self.mask = msk
@@ -668,22 +668,26 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     def vbKeyPress(self,ev):
         try:
             ev.accept()
-            if ev.text() == ']':
-                curval = self.ui.slideBrushSize.value()
-                self.ui.slideBrushSize.setValue(curval+1)
-            elif ev.text() == '[':
-                curval = self.ui.slideBrushSize.value()
-                self.ui.slideBrushSize.setValue(curval-1)
-            elif ev.text() == '=':
-                curval = self.ui.slideAx.value()
-                newval = np.int16(np.clip(curval+1,0,
-                             self.volshape[0]-1))
-                self.ui.slideAx.setValue(newval)
-            elif ev.text() == '-':
-                curval = self.ui.slideAx.value()
-                newval = np.int16(np.clip(curval-1,0,
-                             self.volshape[0]-1))
-                self.ui.slideAx.setValue(newval)
+            try: 
+                newclass = int(ev.text())
+                self.ui.spinClass.setValue(newclass)
+            except ValueError:
+                if ev.text() == ']':
+                    curval = self.ui.slideBrushSize.value()
+                    self.ui.slideBrushSize.setValue(curval+1)
+                elif ev.text() == '[':
+                    curval = self.ui.slideBrushSize.value()
+                    self.ui.slideBrushSize.setValue(curval-1)
+                elif ev.text() == '=':
+                    curval = self.ui.slideAx.value()
+                    newval = np.int16(np.clip(curval+1,0,
+                                self.volshape[0]-1))
+                    self.ui.slideAx.setValue(newval)
+                elif ev.text() == '-':
+                    curval = self.ui.slideAx.value()
+                    newval = np.int16(np.clip(curval-1,0,
+                                self.volshape[0]-1))
+                    self.ui.slideAx.setValue(newval)
             else:
                 ev.ignore()
         except Exception as e:
@@ -722,8 +726,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             if len(self.segmask_undos)>self.max_undo:
                 _ = self.segmask_undos.pop(0)
             self.curclass = self.ui.spinClass.value()
-            print('Current class is:',self.curclass)
             self.curmask = self.segmask[self.inds[0]]==self.curclass
+            self.curws = self.WSseg[self.inds[0]]
             posx = ev.pos().x()
             posy = ev.pos().y()
             self.bt = ev.button()
@@ -749,7 +753,6 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                 if len(self.segmask_undos)>self.max_undo:
                     _ = self.segmask_undos.pop(0)
                 self.curclass = self.ui.spinClass.value()
-                print('Current class is:',self.curclass)
                 self.curmask = self.segmask[self.inds[0]] == self.curclass
                 self.curws = self.WSseg[self.inds[0]]
                 self.prev_mask = np.copy(self.curmask)
@@ -829,54 +832,56 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.msk_item_ax.setImage(self.mask[self.inds[0],...])
     
     def quickDraw(self,x,y):
-        try:
-            brush = self.brush
-            cmask = self.curmask
-            pmask = np.zeros_like(cmask,dtype=np.bool)
-            bt = self.bt
-            m,n = cmask.shape
-            lby,uby = np.int16(np.max((y-self.rad,0))),np.int16(np.min((y+self.rad,m))+1)
-            lbx,ubx = np.int16(np.max((x-self.rad,0))),np.int16(np.min((x+self.rad,n))+1)
-            reg = cmask[lby:uby,lbx:ubx]
-            pbrush = np.copy(brush)
-            if lby==0:
-                ybump = uby-lby
-                pbrush = pbrush[-ybump:,:]
-            elif uby == m+1:
-                ybump = uby-lby-1
-                pbrush = pbrush[:ybump,:]
-            if lbx==0:
-                xbump = ubx-lbx
-                pbrush = pbrush[:,-xbump:]
-            elif ubx==n+1:
-                xbump = ubx-lbx-1
-                pbrush = pbrush[:,:xbump]
+        brush = self.brush
+        cmask = self.curmask
+        pmask = np.zeros_like(cmask,dtype=np.bool)
+        bt = self.bt
+        m,n = cmask.shape
+        lby,uby = np.int16(np.max((y-self.rad,0))),np.int16(np.min((y+self.rad,m))+1)
+        lbx,ubx = np.int16(np.max((x-self.rad,0))),np.int16(np.min((x+self.rad,n))+1)
+        reg = cmask[lby:uby,lbx:ubx]
+        pbrush = np.copy(brush)
+        if lby==0:
+            ybump = uby-lby
+            pbrush = pbrush[-ybump:,:]
+        elif uby == m+1:
+            ybump = uby-lby-1
+            pbrush = pbrush[:ybump,:]
+        if lbx==0:
+            xbump = ubx-lbx
+            pbrush = pbrush[:,-xbump:]
+        elif ubx==n+1:
+            xbump = ubx-lbx-1
+            pbrush = pbrush[:,:xbump]
 
-            if np.array_equal(reg.shape,pbrush.shape):
-                pmask[lby:uby,lbx:ubx] = pbrush
-                wsvals = np.unique(self.curws[pmask==1])
-                recon = np.zeros(self.curws.shape,dtype=np.bool)
-                for val in wsvals:
-                    recon+=(self.curws==val)
-                qmask = reconstruction(pmask,recon)
+        if np.array_equal(reg.shape,pbrush.shape):
+            pmask[lby:uby,lbx:ubx] = pbrush
+            wsvals = np.unique(self.curws[pmask==1])
+            recon = np.zeros(self.curws.shape,dtype=np.bool)
+            for val in wsvals:
+                recon+=(self.curws==val)
+            qmask = reconstruction(pmask,recon)
 
-                if bt == 1:
-                    cmask = np.maximum(qmask,cmask)       
-                else:
-                    cmask = np.minimum(1-np.minimum(qmask,cmask),cmask)            
-
-            self.curmask = cmask
-            self.mask[self.inds[0],...,3] = self.alph*cmask
-            self.msk_item_ax.setImage(self.mask[self.inds[0],...])
-        except Exception as e:
-            print(e)
-            print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))
+            if bt == 1:
+                cmask = np.maximum(qmask,cmask).astype(np.int)  
+            else:
+                self.mask[self.inds[0],cmask,:] = 0
+                cmask = np.minimum(1-np.minimum(qmask,cmask),cmask).astype(np.int)
+        cmask = cmask.astype(np.bool)
+        self.curmask = cmask
+        colA = np.r_[self.GetColor(self.curclass),self.alph]
+        self.mask[self.inds[0],cmask,:] = colA
+        self.msk_item_ax.setImage(self.mask[self.inds[0],...])
 
     def undo(self):
         try:
             if len(self.segmask_undos)>0:
                 self.segmask = self.segmask_undos.pop(-1)
-                self.mask[...,3] = self.alph*self.segmask
+                self.mask = 0*self.mask
+                for cc in range(self.numClasses):
+                    colA = np.r_[self.GetColor(cc+1),self.alph]
+                    segmask_curclass = self.segmask==cc+1
+                    self.mask[segmask_curclass,:] = colA
                 self.updateIms()
             if len(self.segmask_undos) == 0:
                 self.ui.actionUndo.setEnabled(False)
@@ -892,7 +897,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
     
         if reply == QtWidgets.QMessageBox.Yes:
             self.segmask = np.zeros_like(self.segmask)
-            self.mask[...,3] = self.alph*self.segmask
+            self.mask = 0*self.mask
             self.updateIms()
             self.saved = False
             self.disp_msg = 'Current mask cleared'
@@ -1074,7 +1079,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     with open(self.model_arch_path,'w') as file:
                         json.dump(json_model,file)
 
-                self.model.compile(optimizer=self.adopt, loss=dice_loss)
+                self.model.compile(optimizer=self.adopt, loss=dice_multi_loss)
                 
             # Set checkpoint callback if not already set
             if self.cb_check == []:
