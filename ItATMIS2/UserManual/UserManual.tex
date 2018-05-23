@@ -3,7 +3,7 @@
 \usepackage{ifthen}
 \usepackage{graphicx}
 \usepackage[colorlinks=false,allbordercolors={1 1 1}]{hyperref}
-
+\usepackage{minted}
 
 \def\bs{\char'134 } % backslash in \tt font.
 \newcommand{\ie}{i.\,e.,}
@@ -12,8 +12,8 @@
 
 \renewcommand{\abstractname}{Introduction}
 
-\title{PDWFnet User Manual}
-\author{}
+\title{ItATMIS \\ Iterative Annotation and Training for Medical Image Segmentation}
+\author{Jacob Johnson, MS}
 
 \date{}
 \emergencystretch1em  %
@@ -27,11 +27,10 @@
 \setcounter{tocdepth}{2}
 
 \begin{document}
-
 \maketitle
 
 \begin{abstract}
-        This document is used as a helpful guide for using the Breast Segmentation application. Any issues not covered here should be directed to \href{mailto:jmjohnson33@wisc.edu}{Jacob Johnson}.
+        This document is used as a helpful guide for using the medical image segmenation application. Any issues not covered here should be directed to \href{mailto:jmjohnson33@wisc.edu}{Jacob Johnson}.
 \end{abstract}
 
 \tableofcontents
@@ -41,14 +40,23 @@
 
 \section{Getting started}
 %%
+\subsection{Requirements}
+Currently, ItATMIS is only supported on Linux. It was developed in a Python 3.5 Anaconda environment. Using the application in other settings is not supported and can have variable success.
+
+ItATMIS is meant to be used with an installed Nvidia GPU. Depending on the size of your images, the GPU must have at least 8 GB of memory. ItATMIS will be most effective if a high end GPU is used, such as GTX 1080 Ti or Titan Xp. A compatible version of CUDA and CuDNN must already be installed. 
+%%
 \subsection{Installation}
-No installation is required, simply run the file 'PDWFnet.exe' to begin the application. A shortcut to this file may be made and placed in a convenient location. However, do not move any files within the PDWFnet directory.
+Install the Python package requirements listed in \mintinline{bash}{itatmis_requirements.txt}, either manually or using PyPi, as in:
+\begin{minted}{bash}
+	pip install itatmis_requirements.txt
+\end{minted}
+inside your conda environment.
 
 \subsection{User Interface}
 
 The initial PDWFnet interface is shown below. The various utilities of the program can be access using the menubar across the top of the window. When an image volume is loaded, 3 frames of images will appear corresponding to the axial, coronal, and sagittal views. Additional functionality is available by right clicking on the main, axial frame. Messages and information will be displayed in the lower right corner of the interface. A progress bar will appear below the messages during long operations.
 
-\includegraphics[width=.7\textwidth]{InitialInterface.png}
+\includegraphics[width=.7\textwidth]{InitialInterface}
 
 \subsection{The Basics}
 
@@ -88,7 +96,7 @@ For MAT files, store each fat and water image volume in the same file as separat
 
 In order to conduct batch processing, images must be stored as separate variables in the same MAT file, with the series of MAT files stored in the same directory, like below.
 
-\includegraphics[width=.7\textwidth]{BatchMAT_cap.png}
+\includegraphics[width=.7\textwidth]{BatchMAT_cap.PNG}
 
 In the example above, each BatchExample.mat file should have a water images variable and a fat images variable. Additionally, a complex version of each can be included in the import and final processing.
 
@@ -96,7 +104,7 @@ In the example above, each BatchExample.mat file should have a water images vari
 
 Once your images are ready for import, run PDWFnet and select `File$\rightarrow$Import Images...'. The following importing interface will appear.
 
-\includegraphics[width=.7\textwidth]{ImportGUI.png}
+\includegraphics[width=.7\textwidth]{ImportGUI.PNG}
 
 If you are importing a .MAT file, click `Select MAT file...' and navigate to the file containing the images you wish to import. The variables in the .MAT file will be displayed in each column. Select the variable in each column that corresponds to the type of images (Water/Fat).
 
