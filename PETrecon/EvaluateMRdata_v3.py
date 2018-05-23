@@ -75,7 +75,7 @@ for ii in range(len(subj_vec)):
     class_inds = np.argmax(class_output,axis=3)
     class_muMap = np.zeros(class_inds.shape)
     class_muMap[class_inds==1] = 0.001795 # lungs
-    class_muMap[class_inds==2] = 0.01 # soft tissue
+    class_muMap[class_inds==2] = 0.0091 # soft tissue
     class_muMap[class_inds==3] = 0.0112 # bone
     
     #%% Write output
