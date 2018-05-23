@@ -379,7 +379,7 @@ if L1pretrain:
     plt.ylim([0,100])
     if savenodisplay:
         name = 'CycleGANpretrainLossPlot_{}.png'.format(timestr)
-        plt.save(name)
+        plt.savefig(name)
     else:
         plt.show()
     
@@ -503,7 +503,7 @@ plt.legend(['-Discriminator CT Loss',
 plt.ylim([0,60])
 if savenodisplay:
     name = 'CycleGANtrainLossPlot_{}.png'.format(timestr)
-    plt.save(name)
+    plt.savefig(name)
 else:
     plt.show()
 
