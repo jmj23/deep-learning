@@ -11,6 +11,8 @@ import keras
 import h5py
 import os
 import numpy as np
+import nibabel as nib
+from matplotlib import pyplot as plt
 # Use first available GPU
 import GPUtil
 try:
@@ -30,9 +32,10 @@ from keras.models import Model
 from keras.optimizers import Adam
 import keras.backend as K
 from keras.preprocessing.image import ImageDataGenerator
+from keras.utils import to_categorical
 
 #%%
-def BlockModel(in_shape,filt_num=16,numBlocks=4):
+def BlockModel(in_shape,filt_num=16,numBlocks=4,out_chan=1):
     input_shape = in_shape[1:]
     lay_input = Input(shape=(input_shape),name='input_layer')
 
@@ -116,23 +119,32 @@ def BlockModel(in_shape,filt_num=16,numBlocks=4):
     lay_pad = ZeroPadding2D(padding=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_act)
 
     # segmenter
-    lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
+    lay_out = Conv2D(out_chan,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
 
     return Model(lay_input,lay_out)
 
 #%% Dice Coefficient Loss
-def dice_loss(y_true, y_pred):
+def dice_coef(y_true, y_pred):
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
-    dice = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+    return (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+
+def dice_loss(y_true, y_pred):
+    dice = dice_coef(y_true,y_pred)
     return 1-dice
 
+def dice_multi_loss(y_true, y_pred):
+    numLabels = K.int_shape(y_pred)[-1]
+    dice=0
+    for index in range(numLabels):
+        dice -= dice_coef(y_true[...,index], y_pred[...,index])
+    return dice
 #%% Main app
 
 
 # load data
-TrainingFile = 'TrainingData.h5'
+# TrainingFile = 'TrainingData.h5'
 #with h5py.File(TrainingFile,'r') as hf:
 #    images= np.array(hf.get("images"))
 #    segmask = np.array(hf.get("segmask"))
@@ -149,15 +161,43 @@ TrainingFile = 'TrainingData.h5'
 #trainX = np.delete(inputs, val_inds, axis=0)
 #trainY = np.delete(targets, val_inds, axis=0)
 
-with h5py.File(TrainingFile,'r') as hf:
-    trainX = np.array(hf.get("trainX"))
-    trainY = np.array(hf.get("trainY"))
-    valX = np.array(hf.get("valX"))
-    valY = np.array(hf.get("valY"))
+# with h5py.File(TrainingFile,'r') as hf:
+#     trainX = np.array(hf.get("trainX"))
+#     trainY = np.array(hf.get("trainY"))
+#     valX = np.array(hf.get("valX"))
+#     valY = np.array(hf.get("valY"))
+
+imageFile = '/home/jmj136/deep-learning/ItATMIS2/TestNiftis/subj002_WATER.nii'
+maskFile = '/home/jmj136/deep-learning/ItATMIS2/TestNiftis/ItATMISmasks/subj002_WATER_mask.nii'
+numClasses = 2
+
+nft = nib.load(imageFile)
+masknft = nib.load(maskFile)
+# adjust orientation
+canon_nft = nib.as_closest_canonical(nft)
+canon_masknft = nib.as_closest_canonical(masknft)
+ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
+mask = np.swapaxes(np.rollaxis(canon_masknft.get_data(),2,0),1,2)
+for im in ims:
+    im -= np.min(im)
+    im /= np.max(im)
+# add axis and concatenate to target array
+inputs = ims[...,np.newaxis]
+targets = to_categorical(mask,numClasses+1)
+
+
+numIm = inputs.shape[0]
+val_inds = np.random.choice(np.arange(numIm),
+                           np.round(.2*numIm).astype(np.int),
+                           replace=False)
+valX = np.take(inputs,val_inds,axis=0)
+valY = np.take(targets,val_inds, axis=0)
+trainX = np.delete(inputs, val_inds, axis=0)
+trainY = np.delete(targets, val_inds, axis=0)
 
 adopt = Adam()
-model = BlockModel(trainX.shape)
-model.compile(optimizer=adopt, loss=dice_loss)
+model = BlockModel(trainX.shape,out_chan=numClasses+1)
+model.compile(optimizer=adopt, loss=dice_multi_loss)
 
  # setup image data generator
 datagen1 = ImageDataGenerator(
@@ -185,7 +225,7 @@ datagen1.fit(trainX, seed=seed)
 datagen2.fit(trainY, seed=seed)
 
 batchsize = 16
-num_epochs = 30
+num_epochs = 60
 steps = np.int(trainX.shape[0]/batchsize*10)
 
 from VisTools import mask_viewer0
@@ -193,7 +233,9 @@ testXgen = datagen1.flow(trainX,batch_size=64,seed=seed)
 testYgen = datagen2.flow(trainY,batch_size=64,seed=seed)
 testX = testXgen.next()
 testY = testYgen.next()
-mask_viewer0(testX[...,0],testY[...,0])
+mask_viewer0(testX[...,0],testY[...,1])
+mask_viewer0(testX[...,0],testY[...,2])
+plt.show
 
 #%%
 datagen = zip( datagen1.flow( trainX, None, batchsize, seed=seed), datagen2.flow( trainY, None, batchsize, seed=seed) )
@@ -203,8 +245,11 @@ print('Fitting network...')
 print('-'*50)
 
 model.fit_generator( datagen, steps_per_epoch=steps, epochs=num_epochs,verbose=1,validation_data=(valX,valY))
-model.fit_generator( datagen, steps_per_epoch=steps, epochs=2,verbose=1,validation_data=(valX,valY),initial_epoch=num_epochs+2)
+# model.fit_generator( datagen, steps_per_epoch=steps, epochs=2,verbose=1,validation_data=(valX,valY),initial_epoch=num_epochs+2)
 
 output = model.predict(valX)
-val_mask = output>.5
-mask_viewer0(valX[...,0],val_mask[...,0])
+print(output.shape)
+val_mask = np.argmax(output,axis=-1)
+print(val_mask.shape)
+mask_viewer0(valX[...,0],val_mask)
+plt.show()
