@@ -756,6 +756,9 @@
            </item>
            <item>
             <widget class="QSpinBox" name="spinClass">
+             <property name="toolTip">
+              <string>The current annotation class</string>
+             </property>
              <property name="minimum">
               <number>1</number>
              </property>
@@ -816,6 +819,9 @@
              <height>16777215</height>
             </size>
            </property>
+           <property name="toolTip">
+            <string>Opens dialog to select nifti directory</string>
+           </property>
            <property name="text">
             <string>Select Data...</string>
            </property>
@@ -838,11 +844,20 @@
              <height>16777215</height>
             </size>
            </property>
+           <property name="font">
+            <font>
+             <weight>50</weight>
+             <bold>false</bold>
+            </font>
+           </property>
            <property name="focusPolicy">
             <enum>Qt::NoFocus</enum>
            </property>
            <property name="contextMenuPolicy">
             <enum>Qt::CustomContextMenu</enum>
+           </property>
+           <property name="toolTip">
+            <string>Double click to change subjects</string>
            </property>
            <property name="selectionMode">
             <enum>QAbstractItemView::SingleSelection</enum>
@@ -857,6 +872,9 @@
              <height>16777215</height>
             </size>
            </property>
+           <property name="toolTip">
+            <string>Train model on current data</string>
+           </property>
            <property name="text">
             <string>Train</string>
            </property>
@@ -869,6 +887,9 @@
              <width>200</width>
              <height>16777215</height>
             </size>
+           </property>
+           <property name="toolTip">
+            <string>Segment current subject with trained model</string>
            </property>
            <property name="text">
             <string>Evaluate Current Subject</string>

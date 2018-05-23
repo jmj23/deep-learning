@@ -2,7 +2,7 @@ import sys
 sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 from PyQt5 import QtWidgets, QtCore, uic
 from PyQt5.QtCore import pyqtProperty,pyqtSignal, QThread, Qt
-from PyQt5.QtGui import QCursor
+from PyQt5.QtGui import QCursor, QFont
 import pyqtgraph as pg
 import numpy as np
 import json
@@ -143,7 +143,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # keras graph
             self.graph = []
             # Set keras callbacks
-            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=3,
+            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=4,
                                           verbose=1,mode='auto')
             self.cb_check = []
             # Reset keras graph
@@ -274,6 +274,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     self.inds= np.array(hf.get('inds'))
                 if 'numClasses' in list(hf.keys()):
                     self.numClasses = np.array(hf.get('numClasses'))
+                    self.ui.spinClass.setMaximum(self.numClasses)
                 file_list_temp = hf.get('file_list')
                 self.file_list = [n[0].decode('utf-8') for n in file_list_temp]
                 self.mask_list = list(hf.get('mask_list'))
@@ -302,7 +303,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     self.model = model_from_json(json_string)
                     self.model.load_weights(self.model_weights_path)
                     self.adopt = Adam()
-                    self.model.compile(optimizer=self.adopt, loss=dice_loss)
+                    self.model.compile(optimizer=self.adopt, loss=dice_multi_loss)
             
             # initialize display
             self.InitDisplay()
@@ -891,17 +892,39 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             
     def clearMask(self):
         # check to quit
-        quit_msg = "Are you sure you wish to clear the full 3D mask?"
-        reply = QtWidgets.QMessageBox.warning(self, 'Clear Mask', 
-                         quit_msg, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
-    
-        if reply == QtWidgets.QMessageBox.Yes:
+        quit_msg = "Clear slice or entire 3D mask?"
+        msg = QtWidgets.QMessageBox(self)
+        msg.setIcon(QtWidgets.QMessageBox.Question)
+        msg.setWindowTitle('Clear Mask')
+        msg.setText(quit_msg)
+        a_slice = msg.addButton(
+            'Slice', QtWidgets.QMessageBox.AcceptRole)
+        a_full = msg.addButton(
+            'Full 3D', QtWidgets.QMessageBox.AcceptRole)
+        a_cancel = msg.addButton(
+            'Cancel', QtWidgets.QMessageBox.RejectRole)
+        msg.setDefaultButton(a_slice)
+        msg.setEscapeButton(a_cancel)
+        msg.exec_()
+        # msg.deleteLater()
+        print(msg.clickedButton())
+        if msg.clickedButton() is a_slice:
+            print('Clearing slice')
+            self.segmask[self.inds[0]] = 0
+            self.mask[self.inds[0]] = 0
+            self.updateIms()
+            self.saved = False
+            self.disp_msg = 'Current slice cleared'
+        elif msg.clickedButton() is a_full:
+            print('Clearing entire mask')
             self.segmask = np.zeros_like(self.segmask)
             self.mask = 0*self.mask
             self.updateIms()
             self.saved = False
-            self.disp_msg = 'Current mask cleared'
-        return        
+            self.disp_msg = 'Full mask cleared'
+        else:
+            print('Canceled')
+            msg.close()
                 
     def quick_select(self,ev):
         self.qs_on = ev
@@ -924,13 +947,23 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.DataSelectW.show()
 
     def UpdateFNlist(self):
+        # make bold font
+        bFont = QFont()
+        bFont.setBold(True)
+        nFont = QFont()
         # add to list view
         for fname in self.file_list:
             _,fn = os.path.split(fname)
             item = QtWidgets.QListWidgetItem(fn)
+            item.setFont(bFont)
             self.ui.listFiles.addItem(item)
         # set current selection
         self.ui.listFiles.setCurrentRow(self.FNind)
+        # Update fonts according to mask list
+        for ii in range(len(self.mask_list)):
+            if self.mask_list[ii]:
+                self.ui.listFiles.item(ii).setFont(nFont)
+        
     
     def FileListSelect(self,ev):
         newFNind = self.ui.listFiles.row(ev)
@@ -963,13 +996,16 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             nib.save(img,maskPath)
             # update list of mask files
             self.mask_list[self.FNind] = True
+            nFont = QFont()
+            self.ui.listFiles.item(self.FNind).setFont(nFont)
 
     def ChangeSubject(self,ind):
         try:
+            # save current subject
             self.SaveCurrentMask()
-
-            # load new subject
+            # update file index
             self.FNind = ind
+            # load new subject
             self.ImportImages(False)
         except Exception as e:
             print(e)
@@ -1036,7 +1072,11 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setRange(0,1)
         self.ui.progBar.setVisible(False)
         self.ui.viewAxial.setEnabled(True)
-        self.mask[...,3] = self.alph*self.segmask
+        self.mask = 0*self.mask
+        for cc in range(self.numClasses):
+            colA = np.r_[self.GetColor(cc+1),self.alph]
+            segmask_curclass = self.segmask==cc+1
+            self.mask[segmask_curclass,:] = colA
         self.updateIms()
         
     def seg_gotmask(self,mask):
@@ -1073,7 +1113,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
                     # create optimizer
                     self.adopt = Adam()
                     # create model
-                    self.model = BlockModel(self.images.shape,num_out_channels=self.numClasses)
+                    self.model = BlockModel(self.images.shape,num_out_channels=self.numClasses+1)
                     # save architecture
                     json_model = self.model.to_json()
                     with open(self.model_arch_path,'w') as file:
@@ -1093,7 +1133,8 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # Start Training Thread
             self.train_thread = TrainThread(self.graph, self.model,
                                         self.file_list, self.FNind, self.mask_list,
-                                        self.cb_eStop,self.cb_check, self.model_weights_path)
+                                        self.cb_eStop,self.cb_check, self.model_weights_path,
+                                        self.numClasses)
             self.train_thread.message_sig.connect(self.trainGotMessage)
             self.train_thread.model_sig.connect(self.trainGotModel)
             self.train_thread.finished.connect(self.trainFinished)
@@ -1134,8 +1175,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         self.ui.progBar.setTextVisible(True)
         
     def trainBatch(self,num):
-        self.ui.progBar.setValue(num)
-        
+        self.ui.progBar.setValue(num)       
         
     def EvalCurrentSubject(self):
         self.disp_msg = 'Evaluating current subject'
@@ -1235,7 +1275,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
         del self
 
 #%%
-def BlockModel(in_shape,filt_num=16,numBlocks=4,num_out_channels=1):
+def BlockModel(in_shape,filt_num=16,numBlocks=4,num_out_channels=2):
     input_shape = in_shape[1:]+(1,)
     lay_input = Input(shape=(input_shape),name='input_layer')
     
@@ -1322,21 +1362,20 @@ def BlockModel(in_shape,filt_num=16,numBlocks=4,num_out_channels=1):
     lay_out = Conv2D(num_out_channels,(1,1), activation='sigmoid',name='output_layer')(lay_pad)
     
     return Model(lay_input,lay_out)
-#%% Dice Coefficient Loss
-def dice_loss(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    dice = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
-    return 1-dice
 
-#%% Dice Multiclass Loss
-def dice_multi_loss(y_true,y_pred):
+#%% Dice Coefficient
+def dice_coef(y_true, y_pred):
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
-    dice = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
-    return 1-dice
+    return (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+#%% Dice loss
+def dice_multi_loss(y_true, y_pred):
+    numLabels = K.int_shape(y_pred)[-1]
+    dice=0
+    for index in range(numLabels):
+        dice -= dice_coef(y_true[...,index], y_pred[...,index])
+    return dice
 
 #%%
 class DataSelect(QtBaseClass2,Ui_DataSelect):
@@ -1506,7 +1545,8 @@ class TrainThread(QThread):
     batch_sig = pyqtSignal(int)
     
     def __init__(self,graph,model,file_list,FNind,mask_list,
-                 CBstop,CBcheck,model_weights_path):
+                 CBstop,CBcheck,model_weights_path,
+                 numClasses):
         QThread.__init__(self)
         self.graph = graph
         self.file_list = file_list
@@ -1515,6 +1555,7 @@ class TrainThread(QThread):
         self.mask_list = mask_list
         self.CBs = [CBstop,CBcheck]
         self.model_weights_path = model_weights_path
+        self.numClasses = numClasses
         
     def __del__(self):
         self.terminate()
@@ -1552,7 +1593,7 @@ class TrainThread(QThread):
                 im /= np.max(im)
             # add axis
             inputs = ims[...,np.newaxis]
-            targets = mask[...,np.newaxis]
+            targets = to_categorical(mask,self.numClasses+1)
             # import rest of niftis, if more than 1 subject
             if len(file_inds) > 1:
                 for ss in file_inds[1:]:
@@ -1569,10 +1610,11 @@ class TrainThread(QThread):
                         im /= np.max(im)
                     # add axis and concatenate to target array
                     inputs = np.concatenate((inputs,ims[...,np.newaxis]),axis=0)
-                    targets = np.concatenate((targets,mask[...,np.newaxis]),axis=0)
+                    newmask = to_categorical(mask,self.numClasses+1)
+                    targets = np.concatenate((targets,newmask),axis=0)
             
             # check for equal sizes
-            if targets.shape != inputs.shape:
+            if targets.shape[:-1] != inputs.shape[:-1]:
                 print('Targets shape is:', targets.shape)
                 print('Inputs shape is:', inputs.shape)
                 raise ValueError('Input and target shape do not match')
@@ -1708,7 +1750,7 @@ class SegThread(QThread):
             with self.graph.as_default():
                 output = self.model.predict(inputs,batch_size=16,verbose=0)
                 
-            mask = (output[...,0]>.5).astype(np.int)
+            mask = np.argmax(output,axis=-1)
             mask[slice_inds,...] = self.mask[slice_inds,...]
                     
             self.segmask_sig.emit(mask)
