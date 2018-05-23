@@ -23,6 +23,7 @@ try:
     os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 except RuntimeError as e:
     print('No GPU available')
+    print('Using CPU')
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
 import configparser
