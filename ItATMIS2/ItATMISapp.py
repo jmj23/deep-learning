@@ -143,7 +143,7 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
             # keras graph
             self.graph = []
             # Set keras callbacks
-            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=4,
+            self.cb_eStop = EarlyStopping(monitor='val_loss',patience=6,
                                           verbose=1,mode='auto')
             self.cb_check = []
             # Reset keras graph
@@ -1575,7 +1575,6 @@ class TrainThread(QThread):
             # load current images
             self.message_sig.emit('Loading inputs...')
             # get list of files with masks
-            print(self.mask_list)
             file_inds = np.arange(len(self.mask_list))[self.mask_list]
             print(file_inds)
             # import first nifti and mask
@@ -1668,8 +1667,8 @@ class TrainThread(QThread):
             
             # calculate number of epochs and batches
             # numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
-            numEp = 30
-            steps = np.minimum(np.int(trainX.shape[0]/batchsize*8),1000)
+            numEp = 50
+            steps = np.minimum(np.int(trainX.shape[0]/batchsize*16),1000)
             numSteps = steps*numEp
             
             # Make progress callback
