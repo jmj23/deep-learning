@@ -10,4 +10,10 @@
 *.gif
 *.txt
 *.pyc
+*.aux
+*.idx
+*.log
+*.toc
+*.out
+*.synctex.gz
 ItATMIS2/__pycache__/ItATMISapp.cpython-35.pyc
