@@ -16,6 +16,6 @@
 *.toc
 *.out
 *.synctex.gz
-*.ild
+*.ilg
 *.ind
 ItATMIS2/__pycache__/ItATMISapp.cpython-35.pyc
