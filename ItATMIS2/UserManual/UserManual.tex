@@ -12,15 +12,15 @@
 
 \renewcommand{\abstractname}{Introduction}
 
-\title{ItATMIS \\ Iterative Annotation and Training for Medical Image Segmentation}
+\title{\mdseries \textbf{ItATMIS} \\ \textbf{It}erative \textbf{A}nnotation and \textbf{T}raining for \textbf{M}edical \textbf{I}mage \textbf{S}egmentation}
 \author{Jacob Johnson, MS}
 
 \date{}
 \emergencystretch1em  %
 
 \pagestyle{myfootings}
-\markboth{PDWFnet}%
-         {PDWFnet}
+\markboth{ItATMIS User Guide}%
+         {ItATMIS User Guide}
 
 \makeindex 
 
@@ -37,223 +37,174 @@
 
 \newpage
 
-
-\section{Getting started}
+\index{Getting started}\section{Getting started}
 %%
-\subsection{Requirements}
+\index{Requirements}\subsection{Requirements}
 Currently, ItATMIS is only supported on Linux. It was developed in a Python 3.5 Anaconda environment. Using the application in other settings is not supported and can have variable success.
 
-ItATMIS is meant to be used with an installed Nvidia GPU. Depending on the size of your images, the GPU must have at least 8 GB of memory. ItATMIS will be most effective if a high end GPU is used, such as GTX 1080 Ti or Titan Xp. A compatible version of CUDA and CuDNN must already be installed. 
+ItATMIS is meant to be used with an installed Nvidia GPU. Depending on the size of your images, the GPU must have on the order of 8 GB of memory. ItATMIS will be most effective if a high end GPU is used, such as GTX 1080 Ti or Titan Xp. A compatible version of CUDA and CuDNN must already be installed. 
 %%
-\subsection{Installation}
+\index{Installation}\subsection{Installation}
 Install the Python package requirements listed in \mintinline{bash}{itatmis_requirements.txt}, either manually or using PyPi, as in:
 \begin{minted}{bash}
 	pip install itatmis_requirements.txt
 \end{minted}
 inside your conda environment.
 
-\subsection{User Interface}
+\index{ItATMIS interface}\subsection{ItATMIS Interface}
 
-The initial PDWFnet interface is shown below. The various utilities of the program can be access using the menubar across the top of the window. When an image volume is loaded, 3 frames of images will appear corresponding to the axial, coronal, and sagittal views. Additional functionality is available by right clicking on the main, axial frame. Messages and information will be displayed in the lower right corner of the interface. A progress bar will appear below the messages during long operations.
+The initial ItATMIS interface is shown below. It consists of
+\begin{itemize}
+	\item A central area containing 3 display panels which will contain the axial, coronal, and sagittal views of images once loaded
+	\item A slice selection slider on the left side of the interface
+	\item A toolbar across the top of the interface, which includes buttons for saving/loading an ItATMIS project and tools for interacting with the segmentation
+	\item A panel in the upper right of the interface allows more interaction with the segmentation process.
+	\item A set of panels on the lower right side. These contain buttons for selecting data for segmentation, starting the training, and for evaluating the deep learning model on the current subject. Two text displays contain a list of the files that are included in the project and any messages from the program. 
+\end{itemize}
 
-\includegraphics[width=.7\textwidth]{InitialInterface}
+\hspace{1cm}
+\includegraphics[width=.8\textwidth]{InitialInterface.png}
 
-\subsection{The Basics}
+\index{Quick Start}\subsection{Quick Start}
 
-An example, simple use of the program to load DICOM images and segment them is as follows:
+An example procedure for starting a new ItATMIS project is:
 
 \begin{enumerate}
-	\item Run 'PDWFnet.exe'
-	\item Select 'File$\rightarrow$ Import Images...' or press `Ctrl + I'. Other keyboard shortcuts are indicated next to menubar items.
-	\item Click `Select Water Dicom Images...'
-	\item Navigate to the directory of your DICOM files for water images
-	\item Select the first DICOM file of the sequence and click 'Open'
-	\item Repeat steps 3-5, except using `Select Fat Dicom Images...'
-	\item Click `Import Selected Images'
-	\item Upon finishing import, images will appear and can be viewed using the scroll wheel or click and dragging with left mouse button
-	\item A segmentation model must be loaded. Select `File$\rightarrow$Load Model...'
-	\item Navigate to the `Models' directory and select `SampleModel.hdf5'
-	\item The images must be formatted to run the segmentation. Select `Functions$\rightarrow$Prepare Inputs'
-	\item Start the segmentation by selecting `Functions$\rightarrow$Segment'
-	\item After the segmentation has completed, you can select `View$\rightarrow$ Open Viewer' to visually examine all aspects of the segmentation.
-	\item To correct errors, select `Functions$\rightarrow$Correct Segmentation'
-	\item When you are satisfied with the mask, select 'File$\rightarrow$Save Data...' which will prompt for a location to save the PDWFnet output file as a MAT
-	\item Once the data is saved, it may be reloaded using 'File$\rightarrow$Load Data...' to review the aspects of the segmentation or make changes
+	\item Start ItATMIS
+	\item Click `Select Data...' to open the data selection interface
+	\item Click `Select NifTI Files...'
+	\item Navigate to the directory containing your NifTI files that need to be segmented
+	\item Select the first file of the sequence and click 'Open'
+	\item Set the number of classes using the arrow buttons, if you are segmenting more than 1 class
+	\item Click `Set Selected Images'
+	\item The first subject in the list will automatically be loaded and displayed
+	\item Manually segment the images as desired. Left click is add to segmentation and right click is erase. Change classes (if more than 1) 			using the selector on the upper left side of the interface
+	\item Scroll through the image stack using the slider on the left until all images are segmented
+	\item Click `Train' to begin training the deep learning model
+	\item The training will begin in the background. Double click another subject from the list on the right side to load it.
+	\item While the training is running, begin manually segmenting the new subject. Once the training is complete, the model will 					automatically evaluate any slices you have not annotated yet.
+	\item If the segmentation is not satisfactory, it can be cleared slice by slice or the entire 3D mask using the Clear button on the toolbar
+	\item Once the second subject is completely segmented, click `Train' again to train the deep learning model with the new data included
+	\item Repeat the process until the deep learning model provides satisfactory results
+	\item At any time after the initial training, click `Evaluate Current Subject' to get the results of the deep learning model on the subject 			currently loaded. The model will only evaluate slices that do not have any annotations already.
 
 \end{enumerate}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+\newpage
 \section{Images}
 
-\subsection{Image Format}
-
-PDWFnet is currently designed to accept axial fat/water images in the form of a sequence of DICOMs. Additionally, preloaded DICOM sequences may be saved as .MAT files and imported that way as well.
-
-For DICOM files, fat and water images should be stored alone in separate directories. All images in the sequence defined by the first image in the directory will be loaded as the image volume.
-
-For MAT files, store each fat and water image volume in the same file as separate variables. PDWFnet will load 3D arrays of doubles or uint8/16. If the values are complex, their magnitude will be taken.
-
-In order to conduct batch processing, images must be stored as separate variables in the same MAT file, with the series of MAT files stored in the same directory, like below.
-
-\includegraphics[width=.7\textwidth]{BatchMAT_cap.PNG}
-
-In the example above, each BatchExample.mat file should have a water images variable and a fat images variable. Additionally, a complex version of each can be included in the import and final processing.
-
-\subsection{Importing Images}
-
-Once your images are ready for import, run PDWFnet and select `File$\rightarrow$Import Images...'. The following importing interface will appear.
-
-\includegraphics[width=.7\textwidth]{ImportGUI.PNG}
-
-If you are importing a .MAT file, click `Select MAT file...' and navigate to the file containing the images you wish to import. The variables in the .MAT file will be displayed in each column. Select the variable in each column that corresponds to the type of images (Water/Fat).
-
-If you are importing DICOM images, click `Select Water Dicom Images...' and nagivate to the directory of the images you wish to import. Select any image in the directory and click `Open'; the list of Dicom images in that directory will be displayed. Repeat the selection for Fat images.
-
-At this time, both fat and water images must be loaded. In the future, this requirement will be updated to allow loading of a single volume.
-
-The images you import will be saved in the PDWFnet output file, so using these images again can be done by using the load function rather than import.
+\index{Image Handling}\subsection{Image Handling}
 
 
-\subsection{Loading Data}
+ItATMIS is currently designed to accept 3D images in the form of a single NifTI file for each subject. There are many conversion tools available, e.g. \textbf{dcm2nii} for Matlab, that can process DICOM images and return them in the desired form.
 
-Once you have imported images and run any calculation (or none at all), you may save the images into a formatted PDWF output .mat file. These files can then be loaded, rather than imported, using `File$\rightarrow$Load Data...'. All aspects of segmentation (excluding the model) will be reloaded to PDWFnet and will be accessible to view, redo, or correct.
+4D NifTIs are not currently supported. If you wish to use 4D images, split them into individual 3D NifTI files.
 
-\subsection{Save Data}
+The NifTI files are to be stored in a single directory, which will act as the working directory for the ItATMIS project. Preferably, only the NifTI files of interest and nothing else will be stored in this directory so as not to interfere with ItATMIS file reading and saving.
 
-At any point after images are imported, you can generate a PDWFnet data file by selecting `File$\rightarrow$Save Data...'. You will be prompted to choose a location and filename for the data file. All pertinent aspects of the segmentation will be saved in a specifically formatted .mat file. This allows you to use the `Load Data' option rather than importing images.
+Once the ItATMIS project is complete, the masks will be stored in a sub-directory of the image directory, also in NifTI format.
 
-\subsection{Load Model}
 
-A Keras model will need to be loaded before segmenation can be performed. Select `File$\rightarrow$Load Model' and navigate to the Keras model you wish to use for segmentation, or use the included SampleModel.hdf5.
+\index{Importing Images}\subsection{Importing Images}
 
-\subsection{Edit Preferences}
+Once your images are ready for import, run ItATMIS and click `Select Data...'. The following importing interface will appear.
 
-Select `File$\rightarrow$Edit Preferences...' to open a dialog that allows you to adjust various default settings of PDWFnet.
+\hspace{2cm}
+\includegraphics[width=.6\textwidth]{ImportGUI.PNG}
+
+Click `Select NifTI Files...' and nagivate to the directory of the images you wish to import. Select any image in the directory and click `Open'; the list of NifTI images in that directory will be displayed.
+
+You can remove files from this list by right clicking and selecting `Remove from Import'. Once the images are selected, the file list cannot be changed without starting a new project.
+
+If you wish to segment more than 1 class (i.e. 1 class for lungs, 1 class for heart, etc.) then increase the number of classes using the arrows. Currently, a maximum of 6 classes is supported. Using fewer classes will give better deep learning results.
+
+Once you are ready, click `Set Selected Images'. The first subject will be loaded into the display and will be ready for segmentation. The list of files will be displayed on the right side of the interface. The current subject will be highlighted. At any time, double-clicking one of the files will save the current subject and load the selected one.
+
+Selected data in this way begins an ItATMIS project. The project can now be saved using the save button on the toolbar.
+
+
+\index{Save and Load Project Data}\subsection{Save and Load Project Data}
+
+At any point after images are selected, you can generate a ItATMIS project file by selecting the Save button in the upper left of the interface. You will be prompted to choose a location and filename for the data file. All pertinent aspects of the segmentation will be saved in a specifically formatted .HDF5 file, allowing you to pick up where you left off. You can reload the project using the adjacent Load button.
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Functions}
+\section{Segmentation}
 
 %%%%%%%%%%%%%%%%%%%%%
 
-\subsection{Shift Dimensions}
+\index{Interface Basics}\subsection{Interface basics}
 
-PDWFnet attempts to guess the relative dimensions of images imported from MAT files by assuming the smallest dimension of the array is the axial dimension. If this is not the case, the image display will be disconfigured and segmentation will not be performed properly. Correct the dimension order by selecting `Functions$\rightarrow$Shift Dimensions'. This may need to be selected twice to achieve the correct dimension ordering. If the axial plane is displayed in the largest frame, the dimension ordering is correct.
+\marginlabel{Drawing}
+Click and drag the cursor over the main view plane to make an annotation. Click and drag with the right mouse button to erase.
 
-\subsection{Prepare Inputs}
+\marginlabel{Zooming}
+Hold Ctrl while scrolling the mouse wheel to zoom in or out.
 
-Images need to be adjusted before they can be used as inputs for the Keras model. After importing water and fat images, select `Functions\ra Prepare Inputs'.
+\marginlabel{Window/Level}
+Adjust the window and level by clicking and dragging with the middle mouse button (scroll wheel button).
 
-\subsection{Segment}
-
-After images are imported, a Keras model is loaded, and inputs have been prepared, select `Functions\ra Segment' to perform the segmentation. Note that this process will run faster if more system memory is available to PDWFnet. It is recommended to close as many background programs as possible before running the segmenation.
-The segmentation can take several seconds per slice when run on a CPU, and as fast as 0.03 seconds per slice when run on a high end GPU.
-
-\subsection{Correct Segmentation}
-
-Selecting `Functions\ra Correct Segmentation...' opens a separate window for making manual corrections to the segmentation mask. Further details are described in that \hyperref[Corrections]{section}.
-
-\subsection{PDWF Calculations}
-The \% FT (Fibroglandular Tissue- Breast density) can be calculated after segmentation, and additionally compared with the result after corrections are made. Select `Functions\ra Calculate PDWF' and the results will be printed in the display in the lower right corner.
-
-\includegraphics[width=.3\textwidth]{PDWFtable}.
-
-The PDWF for each voxel is calculated by 
-\begin{equation}
-	WF = \frac{SI_w}{SI_w + SI_f}
-\end{equation}
-where $SI_w$ and $SI_f$ are the signal intensities of the corresponding water and fat voxels, respectively.The overall \% FT is calculated by summing $WF$ over the entire segmentation mask, divided by the total volume of the segmentation mask. Volumes are converted to cubic centimeters using the spatial resolution known by PDWFnet. If Dicom images were imported originally, the spatial resolution is obtained from the header. If images were imported from a MAT file, the spatial resolution is guessed using the matrix size of the images along with the defalt field-of-view that can be adjusted using the preferences dialog.
-
-%%%%%%%%%%%%%%%%%%%%%
-
-\textbf{\LARGE{{THE FOLLOWING HAS NOT YET BEEN UPDATED TO APPLY TO PDWFnet}}}
+\marginlabel{3-plane scrolling}
+The main, axial viewing window is the only window for editing annotations. However, the coronal and sagittal view windows can be used to pinpoint a certain location by clicking or dragging the crosshairs.
 
 
-%%%%%%%%%%%%%%%%%%%%%
-
-\section{Corrections}
-\label{Corrections}
-
-
-Selecting `Functions\ra Correct Segmentation' will open the corrections interface which will appear like below.
-
-\includegraphics[width=1\textwidth]{CorrectionsGUI}\\
-
-\subsection{User Interface}
+\index{User Interface}\subsection{User Interface}
 
 \hspace{-1.6in}
 \begin{minipage}{1.35\textwidth}
-\normalsize{Each aspect of the corrections interface is described below}
+\includegraphics[width=.3\textwidth]{CorrectionsToolbar.PNG}
+
+\normalsize{Each of these tools are described below}
 \end{minipage}\\[1em]
 
 \normalsize
 
+\index{Reset View}\marginlabel{Reset View}
+This button will reset the viewing modules to their default settings, including window/leveling, panning, and zooming.
+
+\index{Clear Mask}\marginlabel{Clear Mask}
+This button will clear the current mask. You will be given of clearing the current slice or the entire 3D mask. This is helpful if the deep learning model is not yet providing helpful annotations and you need to clear them out.
+
+\index{Undo}\marginlabel{Undo (Ctrl + Z)}
+This button undos the last brush stroke. Up to 10 of the last annotations are stored.
+
+\index{Quick Select Mode}\marginlabel{Quick Select Mode (P)}
+Click this button to enable quick select mode, an enhanced drawing interface that allows you to quickly annotate well-defined regions in images. The method relies on superpixel segmentation using the watershed approach. It will be most effective when the region you are annotating has highly contrasting edges with its surroundings, e.g. the lungs. It may be less effective in regions with lower constrast.
+
+Quick select mode works for both drawing and erasing.
+
+\large{Other tools and settings}
+
+\normalsize
+
 \marginlabel{Slice Slider}
-Slices can be scrolled through using the slider on the left, by moving the scroll wheel on your mouse, or by pressing the up/down arrows on your keyboard. The current slice number is indicated at the top of the slider. The top and bottom bounds are indicated on the left with red markers. Additionally, when either the top or bottom slice is active, a large red `B' or `T' will appear next to the slice number.
+Slices can be scrolled through using the slider on the left, by moving the scroll wheel on your mouse, or by pressing the +/- keys on your keyboard. The current slice number is indicated at the top of the slider.
 
-\marginlabel{Mask Overlay}
-Toggle both the corrected and uncorrected segmentation mask overlays using the radio buttons on the right side of the interface. When both overlays are `On', the different regions of the mask are color-coded. Regions that are only part of the corrected mask are yellow, regions that are only part of the uncorrected mask are blue, and regions that are part of both masks are light green.
+\marginlabel{Brush Size}
+The current brush radius (in pixels) is shown in the panel on the upper right of the interface. You can change the brush radius using the slider. Brush size can also be increased by pressing the `[' key and decreased by pressing the `]' key.
 
-The corrected mask overlay can also be toggled by pressing `o' on your keyboard.
-
-\marginlabel{Brush}
-Use the dropdown below the mask toggles to select brush size to be used for corrections. The medium brush is selected by default. Note that due to limitations with MATLAB software, the actually footprint of the large brush is a circle that circumscribes the square cursor. For this reason, precise corrections are best done by the small and medium brush sizes.
-
-Brush size can also be increased by pressing `period' (the `$>$' key) and decreased by  pressing `comma' (the`$<$' key).
-
-\marginlabel{Message Box}
-The textbox below the brush dropdown menu indicates whether the corrections you have made since the interface was opened are saved or not. Any error messages will also appear here.
-
-
-\marginlabel{Reset Corrections}
-The reset corrections button can be used to return the corrected mask to its original, uncorrected state. You will be asked for confirmation before the corrections are reset. Additionally, you will have to save the changes in the interface, and then save the data file in SegTrac in order to make the reset permanent. If corrections are reset inadvertently, simply close the corrections interface without saving changes.
-
-\marginlabel{Correction Statistics}
-After making each correction to the mask, the data displayed in the upper right corner of the interface will be updated.
-
-\marginlabel{Toolbar}
-The toolbar contains buttons for saving corrections, zooming and panning, and undo. Note that the undo button can only toggle undo/redo the last change that was made, and only applies to the slice that is currently active. For example, after making a correction and then shifting to the next slice, the undo button will not have any effect until a correction is made on the new slice.
-
-
-The small and medium brushes will line up with the selection being made. The large brush is a circle, but due to limitations of MATLAB, the cursor will only appear as a large square.
-Note that the cursors will not change size when zoom mode is activated, while the effective footprint increases by a factor of two. This means the brush and the cursor will no longer line up and the edge of the brush will have to be estimated based on the response of the GUI.
-
+\textbf{Note:} The circular brushes drawn on the screen will line up with the selection being made. The cursors will change size when zooming is performed, but there can be inconsistencies with certain zoom settings and pixel resolutions between the actual footprint of the brush and the size of the cursor. 
 
 
 %%%
 
-\subsection{Using the application}
+\index{Using ItATMIS}\subsection{Tips for using ItATMIS}
 Here are some tips to on how to properly use this application.
 
-
-\marginlabel{Drawing}
-Click and drag on the image to edit the displayed mask. Ctrl-click or right-click drag to erase. Drawing too quickly will result in a non-continuous line.
-
 \index{Holes}\marginlabel{Holes}
-The application does not allow holes in the mask. Any hole that would be made by either an addition or erasure from the mask will automatically be filled in. The application does allow the mask to be broken into multiple regions, but does eliminate isolated regions smaller than 10 pixels.
+The application does not allow holes in the mask. Any hole that would be made by either an addition or erasure from the mask will automatically be filled in.
 
+\index{Quick Select Strategy}\marginlabel{Quick Select Strategy}
+Using quick select mode is not effective for all regions or images being annotated. However, if it suits your task, the following strategy is recommended.
 
+First, highlight the desired region with quick select mode on. Make sure the entire region is highlighted, even if it means extraneous regions are highlighted as well.
 
-%%%
-\subsection{Troubleshooting}
+Next, turn off quick select mode. Erase the extraneous regions using regular brush strokes, until the annotation is as desired.
 
-\index{Troubleshooting- Small bits}\marginlabel{Small bits of mask are disappearing}
-Part of the processing of the mask after each edit is to remove tiny, standalone parts of the mask. This is designed to prevent unintended residue from erasing part of the mask. The application does not currently support any workaround. If this creates a problem in your use of the application, please contact \href{mailto:jmjohnson33@wisc.edu}{Jacob Johnson} and request a change.
-
-\index{Troubleshooting- Disappear}\marginlabel{My selections are not doing anything}
-There are two places where any selection you make will be ignored. The Vcut which defines the lateral boundaries of the mask is shown in red on all slices. The application does not support any selections outside of that boundary.
-The mask processing also removes any holes from the mask. Thus, any selection while in erase mode that is completely within the current mask will be ignored, as it will create a hole that will be filled in.
-If this behavior causes problems or there is other erroneous behavior, please inform \href{mailto:jmjohnson33@wisc.edu}{Jacob Johnson}.
-
-\index{Troubleshooting-Undo}\marginlabel{The undo button doesn't do anything}
-You only get 1 undo/redo! Additionally, the undo button only works on a per-slice basis. If you switch slices, the undo button will not do anything until you make a change to the current slice.
-
-
-%%%%%%%%%%%%%%%%%%%%%
-
-
+This strategy has been found to be efficient and effective at getting a high quality segmentation.
 
 
 
