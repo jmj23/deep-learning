@@ -23,9 +23,9 @@ if not 'DEVICE_ID' in locals():
     print('Using GPU',DEVICE_ID)
 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
-numEp = 30
+numEp = 50
 b_s = 4
-dual_output = True
+dual_output = False
 filterMult = 8
 #%%
 # Model Save Path/name
@@ -274,9 +274,9 @@ dual_val = data[:,1]
 
 fig3 = plt.figure(2,figsize=(12.0, 6.0));
 plt.semilogy(epochs,dual_train,'r-')
-plt.semilogy(epochs,dual_val,'r-s')
+plt.semilogy(epochs,dual_val,'rs')
 plt.semilogy(epochs,nodual_train,'b-')
-plt.semilogy(epochs,nodual_val,'b-s')
+plt.semilogy(epochs,nodual_val,'bs')
 plt.legend(['Dual Training Loss',
             'Dual Validation Loss',
             'NonDual Training Loss',
