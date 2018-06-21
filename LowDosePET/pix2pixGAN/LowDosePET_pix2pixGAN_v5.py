@@ -33,6 +33,17 @@ datapath = '../lowdosePETdata_30s.hdf5'
 MS = 3
 MSoS = 1
 
+# training parameters
+ex_ind = 122    # example image for progress plotting
+pre_numIter = 500   # number of pre-train batches
+numIter = 10000     # number of adversarial batches
+lr_reduce = 1000    # how often to reduce learning rate
+progstep = 50       # how often to update plot
+valstep = 100       # how often to check validation loss
+b_s = 8             # batch size
+val_b_s = 8         # validation batch size
+train_rat = 5       # D/G training ratio
+
 if not 'x_train' in locals():
     print('Loading data...')
     with h5py.File(datapath,'r') as f:
@@ -269,6 +280,93 @@ def GeneratorModel(input_shape):
         res = add([res,x])
     
     return Model(lay_input,res)
+#%%
+def EncoderBlock(ind,filtmult,x):
+    x1 = Conv2D(filtmult*ind, (1, 1),padding='same',kernel_initializer=conv_initG,
+                           name='Conv1_{}'.format(ind))(x)
+    x1 = ELU(name='elu_1_{}'.format(ind))(x1)
+    x3 = Conv2D(filtmult*ind, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv3_{}'.format(ind))(x)
+    x3 = ELU(name='elu_3_{}'.format(ind))(x3)
+    x51 = Conv2D(filtmult*ind, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv51_{}'.format(ind))(x)
+    x51 = ELU(name='elu_51_{}'.format(ind))(x51)
+    x52 = Conv2D(filtmult*ind, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv52_{}'.format(ind))(x51)
+    x52 = ELU(name='elu_52_{}'.format(ind))(x52)
+    lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(ind))
+    x = Conv2D(filtmult*ind,(1,1),padding='valid',kernel_initializer=conv_initG,
+                       name='ConvAll_{}'.format(ind))(lay_merge)
+    x = ELU(name='elu_all_{}'.format(ind))(x)
+    x = ZeroPadding2D(padding=(1,1))(x)
+    x = Conv2D(filtmult*ind,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
+                       name='ConvStride_{}'.format(ind))(x)
+    x = ELU(name='elu_stride_{}'.format(ind))(x)
+    return x
+#%%
+def DecoderBlock(ind,ind2,filtmult,x,is_res=False):
+    filts = filtmult*(ind-ind2+1)
+    x1 = Conv2D(filts,(1,1),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv1_{}-{}'.format(ind,ind2))(x)
+    x1 = ELU(name='elu_d1_{}-{}'.format(ind,ind2))(x1)
+    x3 = Conv2D(filts,(3,3),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv3_{}-{}'.format(ind,ind2))(x)
+    x3 = ELU(name='elu_d3_{}-{}'.format(ind,ind2))(x3)
+    x51 = Conv2D(filts, (3,3),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv51_{}-{}'.format(ind,ind2))(x)
+    x51 = ELU(name='elu_d51_{}-{}'.format(ind,ind2))(x51)
+    x52 = Conv2D(filts, (3,3),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv52_{}-{}'.format(ind,ind2))(x51)
+    x52 = ELU(name='elu_d52_{}-{}'.format(ind,ind2))(x52)
+    x = concatenate([x1,x3,x52],name='merge_d{}-{}'.format(ind,ind2))
+    x = Conv2D(filts,(1,1),padding='valid',kernel_initializer=conv_initG,
+                       use_bias=False,name='DeConvAll_{}-{}'.format(ind,ind2))(x)
+    x = ELU(name='elu_d-all_{}-{}'.format(ind,ind2))(x)    
+    x = UpSampling2D()(x)
+    x = Conv2DTranspose(filts, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       use_bias=False,name='cleanup_{}-{}'.format(ind,ind2))(x)
+    x = ELU(name='elu_cleanup_{}-{}'.format(ind,ind2))(x)
+    if is_res:
+        x = Conv2D(1, (1,1), padding='same',kernel_initializer=conv_initG,
+                       use_bias=False,name='res_{}'.format(ind))(x)
+    return x
+#%% ResBlock Generator Model
+def ResBlockModel(input_shape,numBlocks=3,filtnum=16):
+    # Input layer
+    lay_input = Input(shape=input_shape,name='input_layer')
+    # extract PET image channel from center slice
+    res = Lambda(lambda x : x[:,1,...,0],name='channel_split')(lay_input)
+    res = Reshape([256,256,1])(res)
+    
+    # Pad input before 3D conv to get right output shape
+    padamt = 1
+    zp = ZeroPadding3D(padding=((0,0),(padamt,padamt),(padamt,padamt)),data_format=None)(lay_input)
+    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(zp)
+    if use_bn:
+        bn = batchnorm()(MSconv, training=1)
+        MSact = ELU(name='MSelu')(bn)
+    else:
+        MSact = ELU(name='MSelu')(MSconv)
+    x = Reshape((256,256,16))(MSact)
+    
+    block_ends = []
+    aa = 0
+    for rr in range(1,numBlocks+1):
+        # encoder
+        x = EncoderBlock(rr,filtnum,x)
+        block_ends.append(x)
+        for dd in range(1,rr+1):
+            # decoder
+            x = DecoderBlock(rr,dd,filtnum,x,dd==rr)
+            if dd==rr:
+                res = add([res,x])
+                x = block_ends[aa]
+            else:
+                x = concatenate([x,block_ends[aa]],name='connect_{}'.format(aa))
+                aa += 1
+                block_ends.append(x)
+    
+    return Model(lay_input,res)
 #%% Discriminator model
 from keras.layers import Flatten, Dense#, Activation
 
@@ -333,7 +431,7 @@ def DiscriminatorModel(input_shape,test_shape,filtnum=16):
     # Merge blocks
     lay_act = concatenate([lay_act1,lay_act2],name='InputMerge')
     # contracting blocks 2-5
-    for rr in range(2,8):
+    for rr in range(2,6):
         lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
                        use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
         lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
@@ -366,7 +464,8 @@ lrG = 1e-4
 
 # create models
 DisModel = DiscriminatorModel(x_train.shape[1:],y_train.shape[1:],8)
-GenModel = GeneratorModel(x_train.shape[1:])
+#GenModel = GeneratorModel(x_train.shape[1:])
+GenModel = ResBlockModel(x_train.shape[1:],numBlocks=4)
 
 # get tensors of inputs and outputs
 real_A = GenModel.input
@@ -392,11 +491,12 @@ training_updates = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel.tra
 netD_train = K.function([real_A, real_B, ep_input],[loss_D], training_updates)
 evalDloss = K.function([real_A,real_B,ep_input],[loss_D])
 
-# make weighted loss based on water/fat values
-water_slice = real_A[:,1,:,:,0]
 
+# create generator loss functions
 y_true = K.flatten(real_B)
 y_pred = K.flatten(fake_B)
+# make weighted loss based on water/fat values
+water_slice = real_A[:,1,:,:,0]
 x_water = K.flatten(water_slice)
 
 water_mask = K.cast(K.greater(x_water,0.15),'float32')
@@ -409,14 +509,27 @@ fat_pred = fat_mask * y_pred
 
 water_loss = K.mean(K.abs(water_true - water_pred),axis=-1)
 fat_loss = K.mean(K.abs(fat_true - fat_pred),axis=-1)
-loss_L1w = .9*water_loss + .1*fat_loss
+
+#loss_L1w = .8*water_loss + .2*fat_loss
+
+# make weighted loss based on over/underestimate
+less_mask = K.cast(K.less(y_pred,y_true),'float32') # underestimation
+less_true = less_mask * y_true
+less_pred = less_mask * y_pred
+less_loss = K.mean(K.abs(less_true - less_pred),axis=-1)
+great_mask = K.cast(K.greater(y_pred,y_true),'float32') # overestimation
+great_true = great_mask * y_true
+great_pred = great_mask * y_pred
+great_loss = K.mean(K.abs(great_true - great_pred),axis=-1)
+
+loss_L1w = .9*less_loss + .1*great_loss
 
 loss_L1 = K.mean(K.abs(fake_B-real_B))
 
-loss_G = -loss_D_fake + 500 * loss_L1w
+loss_G = -loss_D_fake + 1000 * loss_L1w
 
-training_updates = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
-netG_train = K.function([real_A, real_B], [loss_L1w, loss_L1], training_updates)
+trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
+netG_train = K.function([real_A, real_B], [loss_L1w, loss_L1], trups)
 
 netG_eval = K.function([real_A, real_B],[loss_L1])
 
@@ -427,14 +540,7 @@ netG_pretrain = K.function([real_A,real_B],[loss_L1w,loss_L1], pre_trups)
 
 #%% training
 print('Starting training...')
-ex_ind = 122
-pre_numIter = 100
-numIter = 5000
-progstep = 25
-valstep = 100
-b_s = 8
-val_b_s = 8
-train_rat = 5
+# preallocate loss arrays
 tot_iter = numIter + pre_numIter
 dis_loss = np.zeros((tot_iter))
 gen_loss = np.zeros((tot_iter,2))
@@ -531,6 +637,12 @@ for ii in t:
     # Train Generator
     errG = netG_train([cond_batch, real_batch])
     gen_loss[ind] = errG
+    if ii % lr_reduce == 0:
+        # reduce learning rate
+        lrG = lrG/2
+        trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
+        netG_train = K.function([real_A, real_B], [loss_L1w, loss_L1], trups)
+        tqdm.write("Learning rate reduced")
     if ii % progstep == 0:
         cond_samp = x_test[ex_ind,...][np.newaxis,...]
         simfulldose_im = GenModel.predict(cond_samp)[0,...,0]
@@ -578,15 +690,16 @@ print('Training complete')
 # display loss
 from scipy.signal import medfilt
 fig5 = plt.figure(5)
-plt.plot(np.arange(numIter),-medfilt(dis_loss,5),
-         np.arange(numIter),medfilt(100*gen_loss[:,0],5),
-         np.arange(numIter),medfilt(100*gen_loss[:,1],5),
-         np.arange(0,numIter,valstep),100*val_loss[:,0])
+plt.plot(np.arange(tot_iter),-medfilt(dis_loss,5),
+         np.arange(tot_iter),medfilt(100*gen_loss[:,0],5),
+         np.arange(tot_iter),medfilt(100*gen_loss[:,1],5),
+         np.arange(0,tot_iter,valstep),100*val_loss[:,0])
 plt.legend(['-Discriminator Loss',
             'Weighted L1 Loss',
             '100x L1 loss',
             '100x Validation L1 loss'])
-plt.ylim([0,100])
+plt.ylim([0,10])
+plt.xticks(np.arange(0,tot_iter,200))
 plt.show()
 
 #%%
