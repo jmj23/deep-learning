@@ -637,7 +637,7 @@ for ii in t:
     # Train Generator
     errG = netG_train([cond_batch, real_batch])
     gen_loss[ind] = errG
-    if ii % lr_reduce == 0:
+    if ii % lr_reduce == 0 and ii >0:
         # reduce learning rate
         lrG = lrG/2
         trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel.trainable_weights,[], loss_G)
