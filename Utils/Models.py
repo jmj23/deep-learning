@@ -307,6 +307,87 @@ def GeneratorMS3(input_shape,numBlocks,filtnum=20,use_bn=False):
     lay_res = add([in0,x],name='residual')
     
     return Model(lay_input,lay_res)
+#%% 2D pix2pix discriminator
+def Discriminator2D(conditional_input_shape,test_input_shape,filtnum=16):
+    # Conditional Inputs
+    lay_cond_input = Input(shape=conditional_input_shape,name='conditional_input')
+    
+    xcond = Conv2D(filtnum,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initD,
+                       name='FirstCondLayer')(lay_cond_input)
+    xcond = LeakyReLU(alpha=0.2,name='leaky_cond')(xcond)
+    
+    
+    usebias = False
+    
+    # contracting block 1
+    rr = 1
+    lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv1_{}'.format(rr))(xcond)
+    lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv3_{}'.format(rr))(xcond)
+    lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv51_{}'.format(rr))(xcond)
+    lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
+    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+    lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
+#    bn = batchnorm()(lay_conv_all, training=1)
+    lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
+    lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
+    lay_act1 = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
+    
+    
+    # Testing Input block
+    lay_test_input = Input(shape=test_input_shape,name='test_input')
+    xtest = Conv2D(filtnum,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='FirstTestLayer')(lay_test_input)
+    xtest = LeakyReLU(alpha=0.2,name='leaky_test')(xtest)
+    # contracting block 1
+    rr = 1
+    lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv1_{}t'.format(rr))(xtest)
+    lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv3_{}t'.format(rr))(xtest)
+    lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv51_{}t'.format(rr))(xtest)
+    lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv52_{}t'.format(rr))(lay_conv51)
+    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}t'.format(rr))
+    lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvAll_{}t'.format(rr))(lay_merge)
+#    bn = batchnorm()(lay_conv_all, training=1)
+    lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1t'.format(rr))(lay_conv_all)
+    lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvStride_{}t'.format(rr))(lay_act)
+    lay_act2 = LeakyReLU(alpha=0.2,name='leaky{}_2t'.format(rr))(lay_stride)
+    
+    # Merge blocks
+    lay_act = concatenate([lay_act1,lay_act2],name='InputMerge')
+    # contracting blocks 2-5
+    for rr in range(2,6):
+        lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
+        lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv3_{}'.format(rr))(lay_act)
+        lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv51_{}'.format(rr))(lay_act)
+        lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
+        lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+        lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
+#        bn = batchnorm()(lay_conv_all, training=1)
+        lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
+        lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
+        lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
+    
+    lay_flat = Flatten()(lay_act)
+    lay_dense = Dense(1,kernel_initializer=conv_initD,name='Dense1')(lay_flat)
+    
+    return Model(inputs=[lay_cond_input,lay_test_input],outputs=[lay_dense])
 
 #%% 3 multislice pix2pix discriminator
 def DiscriminatorMS3(conditional_input_shape,test_input_shape,filtnum=16):
