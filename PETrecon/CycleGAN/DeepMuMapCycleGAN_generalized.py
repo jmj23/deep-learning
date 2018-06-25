@@ -25,14 +25,16 @@ if not 'DEVICE_ID' in locals():
 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
 np.random.seed(seed=1)
-
+    
 #%%~#~#~#~#~#~#~#~#~#~#~#~#~#~#
 # Parameters/variables to set
 #~#~#~#~#~#~#~#~#~#~#~#~#~#~#~#
 
 # Model Save Path/name
 timestr = time.strftime("%Y%m%d%H%M")
-model_filepath = 'DeepMuMapCyleGAN_{}_model_{}.h5'.format('{}',timestr)
+model_filepath = 'DeepMuMapCycleGAN_{}_model_{}.h5'.format('{}',timestr)
+# load previous model
+model_filepath = 'DeepMuMapCyleGAN_MR2CT_model_201805031054.h5'
 
 # Data path/name
 datapath = 'CycleGAN_data_TVT.hdf5'
@@ -127,6 +129,7 @@ if not 'test_MR' in locals():
             train_CT = np.array(f.get('CT_train_con'))
             val_MR = np.array(f.get('MR_val'))
             val_CT = np.array(f.get('CT_val_con'))
+    print('Data Loaded')
         
 #%% Setup models for training
 print("Creating models...")
