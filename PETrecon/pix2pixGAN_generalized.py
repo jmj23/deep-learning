@@ -46,8 +46,8 @@ datapath = os.path.join('/','home','jmj136','deep-learning',
 training = True
 
 # set learning rates and loss weights
-lrD = 1e-5  # discriminator learning rate
-lrG = 1e-5  # generator learning rate
+lrD = 1e-4  # discriminator learning rate
+lrG = 1e-4  # generator learning rate
 λ = 10  # grad penalty weighting- leave alone
 C = 200  # L1 Loss weighting
 
@@ -72,7 +72,7 @@ CT_reg = True
 MR_reg = True
 
 # whether to plot progress images
-plot_prog = True
+plot_prog = False
 # whether to save progress gif after training
 gif_prog = False
 # whether to just save loss plots rather than
@@ -95,7 +95,7 @@ val_b_s = 16
 train_rat = 5
 # whether to use learning rate decay
 LR_decay = True
-LR_period = np.int(numIter/4)
+LR_period = np.int(numIter/5)
 
 #%% Loading data
 # Load training, validation, and testing data
@@ -269,8 +269,14 @@ for ii in t:
         val_loss[vv] = cur_val_loss           
         vv +=1
                 
-    if LR_decay and (ii) % LR_period == 0:
+    if LR_decay and (ii) % LR_period == 0 and ii > 0:
+        lrG = lrG/2
+        G_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel_MR2CT.trainable_weights,[], loss_G)
+        fn_trainG = K.function([real_MR,real_CT], [-fakeCTloss, loss_L1], G_trups)
         print('Updated generator learning rate to {:.3g}'.format(lrG))
+        lrD = lrD/2
+        D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel_CT.trainable_weights,[],loss_D)
+        fn_trainD = K.function([real_MR, real_CT, ep_input1],[loss_D], D_trups)
         print('Updated discriminator learning rate to {:.3g}'.format(lrD))
         
     t.set_postfix(Dloss=dis_loss[ii,0],L1Loss = gen_loss[ii,1])
