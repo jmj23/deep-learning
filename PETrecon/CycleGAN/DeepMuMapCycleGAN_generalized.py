@@ -216,7 +216,7 @@ loss_D = loss_CT + loss_MR
 weights_D = DisModel_CT.trainable_weights + DisModel_MR.trainable_weights
 
 D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(weights_D,[],loss_D)
-fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2,lrD],[loss_CT, loss_MR], D_trups)
+fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2],[loss_CT, loss_MR], D_trups)
 
 # Generator Training function
 loss_G = loss_MR2CT + C*loss_MR2CT2MR + loss_CT2MR #+ C*loss_CT2MR2CT
@@ -225,7 +225,7 @@ weights_G = GenModel_MR2CT.trainable_weights + GenModel_CT2MR.trainable_weights
 MR2CT_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], loss_G)
 # Generator training function returns MR2CT discriminator loss and MR2CT2MR cycle loss
 
-fn_trainG = K.function([real_MR,real_CT,lrG], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trups)
+fn_trainG = K.function([real_MR,real_CT], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trups)
 
 # validation evaluate function
 fn_evalCycle = K.function([real_MR],[loss_MR2CT2MR])
@@ -465,8 +465,14 @@ for ii in t:
         data = (dis_loss[:,0],dis_loss[:,1],gen_loss[:,0],gen_loss[:,1])
         np.savetxt(name,data)
         
-    if LR_decay and (ii) % LR_period == 0:
+    if LR_decay and (ii) % LR_period == 0 and ii>0:
+        lrG = lrG/2
+        MR2CT_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(weights_G,[], loss_G)
+        fn_trainG = K.function([real_MR,real_CT], [loss_MR2CT,loss_MR2CT2MR], MR2CT_trups)
         print('Updated generator learning rate to {:.3g}'.format(lrG))
+        lrD = lrD/2
+        D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(weights_D,[],loss_D)
+        fn_trainD = K.function([real_MR, real_CT, ep_input1, ep_input2],[loss_CT, loss_MR], D_trups)
         print('Updated discriminator learning rate to {:.3g}'.format(lrD))
         
     t.set_postfix(Dloss=dis_loss[ii,0],CycleLoss = gen_loss[ii,1])
