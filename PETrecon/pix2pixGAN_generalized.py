@@ -32,7 +32,7 @@ np.random.seed(seed=1)
 
 # Model Save Path/name
 timestr = time.strftime("%Y%m%d%H%M")
-model_filepath = 'DeepMuMap_pix2pix_model_{}.h5'.format('{}',timestr)
+model_filepath = 'DeepMuMap_pix2pix_model_{}.h5'.format(timestr)
 # load previous model
 #model_filepath = 'DeepMuMapCyleGAN_MR2CT_model_201805031054.h5'
 
@@ -81,9 +81,9 @@ savenodisplay = False
 # index of testing slice to use as progress image
 ex_ind = 136
 # number of iterations (batches) to train
-numIter = 5000
+numIter = 20000
 # how many iterations between updating progress image
-progstep = 50
+progstep = 100
 # how many iterations between checking validation score
 # and saving model
 valstep = 100
@@ -94,8 +94,8 @@ val_b_s = 16
 # training ratio between discriminator and generator
 train_rat = 5
 # whether to use learning rate decay
-LR_decay = False
-LR_period = np.int(numIter/5)
+LR_decay = True
+LR_period = np.int(numIter/4)
 
 #%% Loading data
 # Load training, validation, and testing data
@@ -173,7 +173,7 @@ G_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel_MR2CT.traina
 fn_trainG = K.function([real_MR,real_CT], [-fakeCTloss, loss_L1], G_trups)
 
 # validation evaluate function
-fn_eval = K.function([real_MR],[loss_L1])
+fn_eval = K.function([real_MR,real_CT],[loss_L1])
 
 #%% Progress plotting function
 def ProgressPlot(test_MR,test_CT,ex_ind,MR_reg,CT_reg,ax):
@@ -211,7 +211,7 @@ print('Starting training...')
 dis_loss = np.zeros((numIter,1))
 gen_loss = np.zeros((numIter,2))
 val_loss = np.ones((np.int(numIter/valstep),1))
-templosses = np.zeros((np.int(val_MR.shape[0]/val_b_s),2))
+templosses = np.zeros((np.int(val_MR.shape[0]/val_b_s),1))
 
 # Updatable plot
 if plot_prog:
@@ -255,7 +255,7 @@ for ii in t:
         for bb in range(0,templosses.shape[0]):
             val_inds = np.arange(bb*val_b_s,np.minimum((bb+1)*val_b_s,val_MR.shape[0]))
             MR_batch = val_MR[val_inds,...]
-            valL1 = fn_eval([MR_batch])[0]
+            valL1 = fn_eval([MR_batch,CT_batch])[0]
             templosses[bb] = valL1
         
         cur_val_loss = np.mean(templosses,axis=0)
@@ -273,7 +273,7 @@ for ii in t:
         print('Updated generator learning rate to {:.3g}'.format(lrG))
         print('Updated discriminator learning rate to {:.3g}'.format(lrD))
         
-    t.set_postfix(Dloss=dis_loss[ii],L1Loss = gen_loss[ii,1])
+    t.set_postfix(Dloss=dis_loss[ii,0],L1Loss = gen_loss[ii,1])
     
 t.close()
 del t
@@ -295,16 +295,14 @@ print('Backup Model saved')
 from scipy.signal import medfilt
 fig = plt.figure()
 plt.plot(np.arange(numIter),-medfilt(dis_loss[:,0],5),
-         np.arange(numIter),-medfilt(dis_loss[:,1],5),
          np.arange(numIter),medfilt(1000*gen_loss[:,1],5),
-         np.arange(0,numIter,valstep),1000*val_loss[:,0])
+         np.arange(0,numIter,valstep),1000*val_loss[:])
 plt.legend(['-Discriminator CT Loss',
-            '-Discriminator MR Loss',
-            '1000x Cycle Loss',
-            '1000x Validation Cycle loss'])
+            '1000x L1 Loss',
+            '1000x Validation L1 loss'])
 plt.ylim([0,60])
 if savenodisplay:
-    name = 'CycleGANtrainLossPlot_{}.png'.format(timestr)
+    name = 'pix2pixGANtrainLossPlot_{}.png'.format(timestr)
     plt.savefig(name)
 else:
     plt.show()
@@ -321,17 +319,10 @@ if False:
     json_file.close()
     GenModel_MR2CT = model_from_json(loaded_model_json)
     GenModel_MR2CT.load_weights("BackupModel_MR2CT.h5")
-    from keras.models import model_from_json
-    json_file = open('BackupModel_CT2MR.json', 'r')
-    loaded_model_json = json_file.read()
-    json_file.close()
-    GenModel_CT2MR = model_from_json(loaded_model_json)
-    GenModel_CT2MR.load_weights("BackupModel_CT2MR.h5")
-    print("Loaded backup models from weights")
+    print("Loaded backup model from weights")
 else:
     # Load regular checkpointed models
     GenModel_MR2CT = load_model(model_filepath.format('MR2CT'),None,False)
-    GenModel_CT2MR = load_model(model_filepath.format('CT2MR'),None,False)
 
 # get generator results
 time1 = time.time()
@@ -358,13 +349,6 @@ if CT_reg:
     print('Mean SSIM of ', np.mean(SSIMs))
     print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
 
-# Display test images in grid
-# Input MR     | Output CT
-#----------------------
-# Recovered MR | Actual CT
-
-MRrec = GenModel_CT2MR.predict(CTtest)
-
 if CT_reg:
     CT_output = CTtest[...,0]
     CT_truth = test_CT[...,0]
@@ -375,17 +359,11 @@ else:
     CT_truth = CTinds_truth/CTtest.shape[-1]
 if MR_reg:
     MR_output = test_MR[...,0]
-    MR_rec= MRrec[...,0]
 else:
     MRinds = np.argmax(test_MR,axis=-1)
     MR_output = MRinds/test_MR.shape[-1]
-    MRinds_rec = np.argmax(MRrec,axis=-1)
-    MR_rec = MRinds_rec/MRrec.shape[-1]
         
-disp_im1 = np.c_[MR_output,CT_output]
-disp_im2 = np.c_[MR_rec,CT_truth]
-test_disp = np.concatenate((disp_im1,disp_im2),axis=1)
-
+test_disp = np.c_[MR_output,CT_output,CT_truth]
 if CT_reg:
     multi_slice_viewer0(test_disp,'Test Images',SSIMs)
 else:
