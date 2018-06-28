@@ -247,26 +247,26 @@ SegModel.compile(loss=dice_coef,optimizer=keras.optimizers.Adam())
 # of every epoch so we can keep an eye on overfitting
 SegModel.fit(x_train, y_train,
           batch_size=16,
-          epochs=2,
+          epochs=10,
           verbose=1,
           shuffle=True,
           validation_data=(x_val, y_val))
 # After the training is complete, we evaluate the model again on our validation
 # data to see the results.
 score = SegModel.evaluate(x_val, y_val, verbose=0)
-print('Final Dice:', 1-score[0])
+print('Final Dice:', 1-score)
 
 
 # We'll display the prediction and truth next to each other
 # and see how it faired
 predictions = SegModel.predict(x_val)
-fig5 = plt.figure(5)
+# pick a random slice to examine
+disp_ind = 42
+fig5 = plt.figure()
+disp = np.c_[x_val[disp_ind,...,0],predictions[disp_ind,...,0],y_val[disp_ind,...,0]]
+plt.imshow(disp,cmap='gray')
 
-# Ooh... not great. Results may vary from
-# simply mediocre to downright terrible
-# It turn out that segmenting an image 4 times larger
-# is much more difficult than simply classifying
-# the small images.
+# Well... it's ok. Not the greatest but it's not terrible either.
 # There are a variety of directions to go from here
 
 # A deeper net gives more representational power
@@ -284,11 +284,6 @@ fig5 = plt.figure(5)
 # of the model as well as improves the gradient flow, which
 # also helps the model learn quicker.
 
-# However, in this case, our segmentation is still pretty simple.
-# I ran the training for 30 epochs on a GPU and the results were
-# much, much better. 
-
-# Happy (deep) learning!
 
 #%% Part 3: Functional API
 # So far, we've been making sequential models.
@@ -393,38 +388,32 @@ x1d = Conv2DTranspose(20,kernel_size=(3,3),
                            activation='relu')(cat)
 cat = concatenate([x1d,x1])
 # Final output layer
-out = Conv2DTranspose(11,kernel_size=(3,3),
+out = Conv2DTranspose(1,kernel_size=(3,3),
                            activation='softmax')(cat)
-# All of our layers and their connections are now defined. This is
-# commonly referred to as a 'graph', where the layers are the nodes
-# and the calculations from layers to layers are the edges.
-# You can think of the information 'flowing' from the inputs to the outputs.
-# Additionally, the information is stored as tensors, which are not defined
-# arrays but rather placeholders for whichever data we feed in. Notice how
-# we don't give our model any real data until the training begins?
-# Now you know how "TensorFlow" got its name!
 
-# To turn our graph into a real Keras model that we can use, simply call
-# the 'Model' function we loaded
-func_model = Model(inp,out)
+SegModel2 = Model(inp,out)
 
 # We can print out a summary of the model to make sure it's what we want.
 # It's a little bit harder to keep track of layers in non-sequential
 # format, but it's still a good way to make sure things look right.
-func_model.summary()
+SegModel2.summary()
 
 # Now, everything else is just like the previous segmentation model
 # Let's try it out and see how it works!
-func_model.compile(loss=keras.losses.categorical_crossentropy,
+SegModel2.compile(loss=dice_coef,
               optimizer=keras.optimizers.Adam())
-func_model.fit(x_train, y_train,
+SegModel2.fit(x_train, y_train,
           batch_size=16,
-          epochs=2,
+          epochs=20,
           verbose=1,
+          shuffle=True,
           validation_data=(x_val, y_val))
 
-predictionsF = SegModel.predict(x_val)
-fig6= plt.figure(6)
+predictions = SegModel.predict(x_val)
+fig6= plt.figure()
+disp_ind = 44
+disp = np.c_[x_val[disp_ind,...,0],predictions[disp_ind,...,0],y_val[disp_ind,...,0]]
+plt.imshow(disp,cmap='gray')
 
 
 # Well.... ok. It's about the same.
