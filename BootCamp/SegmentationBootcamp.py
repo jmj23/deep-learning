@@ -2,7 +2,12 @@
 in Keras. This tutorial walks through an example in segmentation
 '''
 # for pydicom install: conda install -c conda-forge --no-deps pydicom
-#%% Part 1: Classification
+# other deps:
+    # pip install keras
+    # conda install scikit-image
+    # conda install scipy
+    # Demo_functions.py must be on path
+    
 #%% Initial Preparation
 # First, import necessary modules
 import os # operating system operations 
@@ -417,7 +422,7 @@ plt.imshow(disp,cmap='gray')
 
 
 # Well.... ok. It's about the same.
-# However! In the long run (more than 2 epochs), having these skip connections
+# However! In the long run (more than 10 epochs), having these skip connections
 # will definitely make a difference. The difference becomes more pronounced
 # for deeper networks (more layers) with more parameters and larger images.
 
