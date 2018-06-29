@@ -138,6 +138,8 @@ del ims
 from scipy.ndimage import zoom
 inputs = zoom(inputs, (1,.5,.5))
 targets = zoom(targets, (1,.5,.5))
+targets[targets>.1] = 1
+targets[targets<.1] = 0
 # the final step is to add a singleton dimesion to these arrays
 # This is necessary because the deep learning model we will create
 # will expect our input to have color channels. Since our images
@@ -167,7 +169,7 @@ y_val = targets[split_ind:]
 # being sure to keep the inputs and targets in the 
 # same order...
 sort_r = np.random.permutation(split_ind)
-np.take(x_train,sort_r,axis=0,out=y_train)
+np.take(x_train,sort_r,axis=0,out=x_train)
 np.take(y_train,sort_r,axis=0,out=y_train)
 # clear up unneeded variables
 del inputs,targets
@@ -188,30 +190,30 @@ inp = Input(shape=x_train.shape[1:])
 from keras.layers import Conv2D
 # We can reuse the variable 'x' and Keras will remember what the layers
 # are connected to
-x = Conv2D(10,(3,3),activation='relu')(inp)
-x = Conv2D(20,(3,3),activation='relu')(x)
-x = Conv2D(20,(3,3),activation='relu')(x)
+x = Conv2D(20,(3,3),activation='relu')(inp)
+x = Conv2D(40,(3,3),activation='relu')(x)
+x = Conv2D(40,(3,3),activation='relu')(x)
 # now we will use a strided convolution, which downsamples the input
 # and increases the network's receptive field
 # We will use zero padding first to make the image shapes work out correctly
 from keras.layers import ZeroPadding2D
 x = ZeroPadding2D(padding=(1,1))(x)
-x = Conv2D(20,(4,4),strides=(2,2),activation='relu')(x)
-# repeat that sequence
-x = Conv2D(30,(3,3),activation='relu')(x)
-x = Conv2D(40,(3,3),activation='relu')(x)
-x = Conv2D(40,(3,3),activation='relu')(x)
-x = ZeroPadding2D(padding=(1,1))(x)
 x = Conv2D(40,(4,4),strides=(2,2),activation='relu')(x)
+# repeat that sequence
+x = Conv2D(60,(3,3),activation='relu')(x)
+x = Conv2D(80,(3,3),activation='relu')(x)
+x = Conv2D(80,(3,3),activation='relu')(x)
+x = ZeroPadding2D(padding=(1,1))(x)
+x = Conv2D(80,(4,4),strides=(2,2),activation='relu')(x)
 # now, we will reverse the downsampling using transposed convolutions
 from keras.layers import Conv2DTranspose
+x = Conv2DTranspose(60,(4,4),strides=(2,2),activation='relu')(x)
+x = Conv2DTranspose(40,(3,3),activation='relu')(x)
+x = Conv2DTranspose(40,(3,3),activation='relu')(x)
 x = Conv2DTranspose(40,(4,4),strides=(2,2),activation='relu')(x)
-x = Conv2DTranspose(30,(3,3),activation='relu')(x)
-x = Conv2DTranspose(30,(3,3),activation='relu')(x)
-x = Conv2DTranspose(30,(4,4),strides=(2,2),activation='relu')(x)
 x = Conv2DTranspose(20,(3,3),activation='relu')(x)
 x = Conv2DTranspose(20,(3,3),activation='relu')(x)
-x = Conv2DTranspose(20,(3,3),activation='relu')(x)
+x = Conv2DTranspose(10,(3,3),activation='relu')(x)
 # finally, our output layer will need to have a single output
 # channel corresponding to a single segmentation class
 # We will use sigmoid activation that squashed the output to a probability
@@ -249,7 +251,7 @@ def dice_coef(y_true, y_pred):
 
 # The ADAM optimizer is widely used with good performance on the majority
 # of deep learning applications
-SegModel.compile(loss=dice_coef,optimizer=keras.optimizers.Adam())
+SegModel.compile(loss=dice_coef,optimizer=keras.optimizers.Adam(lr=1e-4))
 
 # All that's left to do is to "fit" the model to our data!
 # We supply our training data, our batch size and epochs that were
@@ -258,14 +260,14 @@ SegModel.compile(loss=dice_coef,optimizer=keras.optimizers.Adam())
 # of every epoch so we can keep an eye on overfitting
 SegModel.fit(x_train, y_train,
           batch_size=16,
-          epochs=10,
+          epochs=16,
           verbose=1,
           shuffle=True,
           validation_data=(x_val, y_val))
 # After the training is complete, we evaluate the model again on our validation
 # data to see the results.
 score = SegModel.evaluate(x_val, y_val, verbose=0)
-print('Final Dice:', 1-score)
+print('Final Dice on validation set:', 1-score)
 
 
 # We'll display the prediction and truth next to each other
@@ -334,31 +336,32 @@ inp = Input(shape=x_train.shape[1:])
 # We don't need to keep track of every layer- just
 # a few of them. We won't keep track of the first one
 # but we'll keep the second one and name it x1
-x = Conv2D(10,kernel_size=(3,3),padding='same',activation='relu')(inp)
-x1 = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(20,kernel_size=(3,3),padding='same',activation='relu')(inp)
+x1 = Conv2D(40, kernel_size=(3,3),padding='same',activation='relu')(x)
 # Add zero padding like before to keep our layer sizes friendly
 # and then perform downsampling
 zp = ZeroPadding2D(padding=(1,1))(x1)
-x = Conv2D(20, kernel_size=(4,4),
+x = Conv2D(40, kernel_size=(4,4),
                  strides=(2,2),
                  activation='relu')(zp)
 # Now repeat the process, hanging onto the second layer again
-x = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
-x2 = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(60, kernel_size=(3,3),padding='same',activation='relu')(x)
+x2 = Conv2D(60, kernel_size=(3,3),padding='same',activation='relu')(x)
 zp = ZeroPadding2D(padding=(1,1))(x2)
-x = Conv2D(30, kernel_size=(4,4),
+x = Conv2D(60, kernel_size=(4,4),
                 strides=(2,2),
                 activation='relu')(zp)
 # We've now done 2 downsampling layers, like before.
 # Now for the decoding side of the network, we will start
 # adding skip connections
 # The first couple of layers are the same as usual.
-x = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
-x = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(60, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(60, kernel_size=(3,3),padding='same',activation='relu')(x)
 # Now our upsampling layer
-x = Conv2DTranspose(30, kernel_size=(2,2),
+x = Conv2DTranspose(60, kernel_size=(4,4),
                           strides=(2,2),
                           activation='relu')(x)
+x = Conv2D(60, kernel_size=(3,3),activation='relu')(x)
 # This layer is now the same size as the second layer we kept.
 # It can be tough to get layers to match up just right in size
 # Playing around with kernel size and strides is usually needed
@@ -369,17 +372,18 @@ x = Conv2DTranspose(30, kernel_size=(2,2),
 x = concatenate([x,x2])
 # Now continue to add layers for the decoding side of the
 # network, treating this merged layer like any other
-x = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
-x = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
-x = Conv2DTranspose(30, kernel_size=(2,2),
+x = Conv2D(40, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(40, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2DTranspose(40, kernel_size=(4,4),
                           strides=(2,2),
                           activation='relu')(x)
+x = Conv2D(40, kernel_size=(3,3),activation='relu')(x)
 x = concatenate([x,x1])
-x = Conv2D(10, kernel_size=(3,3),padding='same',activation='relu')(x)
-x = Conv2D(10, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
 
 # Final output layer
-out = Conv2D(1,kernel_size=(1,1),activation='softmax')(x)
+out = Conv2D(1,kernel_size=(1,1),activation='sigmoid')(x)
 
 SegModel2 = Model(inp,out)
 
