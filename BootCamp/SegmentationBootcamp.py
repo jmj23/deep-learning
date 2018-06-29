@@ -163,6 +163,12 @@ x_train = inputs[:split_ind]
 y_train = targets[:split_ind]
 x_val = inputs[split_ind:]
 y_val = targets[split_ind:]
+# finally, shuffle the order of the training data
+# being sure to keep the inputs and targets in the 
+# same order...
+sort_r = np.random.permutation(split_ind)
+np.take(x_train,sort_r,axis=0,out=y_train)
+np.take(y_train,sort_r,axis=0,out=y_train)
 # clear up unneeded variables
 del inputs,targets
 
@@ -182,30 +188,30 @@ inp = Input(shape=x_train.shape[1:])
 from keras.layers import Conv2D
 # We can reuse the variable 'x' and Keras will remember what the layers
 # are connected to
-x = Conv2D(8,(3,3),activation='relu')(inp)
-x = Conv2D(16,(3,3),activation='relu')(x)
-x = Conv2D(16,(3,3),activation='relu')(x)
+x = Conv2D(10,(3,3),activation='relu')(inp)
+x = Conv2D(20,(3,3),activation='relu')(x)
+x = Conv2D(20,(3,3),activation='relu')(x)
 # now we will use a strided convolution, which downsamples the input
 # and increases the network's receptive field
 # We will use zero padding first to make the image shapes work out correctly
 from keras.layers import ZeroPadding2D
 x = ZeroPadding2D(padding=(1,1))(x)
-x = Conv2D(16,(4,4),strides=(2,2),activation='relu')(x)
+x = Conv2D(20,(4,4),strides=(2,2),activation='relu')(x)
 # repeat that sequence
-x = Conv2D(32,(3,3),activation='relu')(x)
-x = Conv2D(64,(3,3),activation='relu')(x)
-x = Conv2D(64,(3,3),activation='relu')(x)
+x = Conv2D(30,(3,3),activation='relu')(x)
+x = Conv2D(40,(3,3),activation='relu')(x)
+x = Conv2D(40,(3,3),activation='relu')(x)
 x = ZeroPadding2D(padding=(1,1))(x)
-x = Conv2D(64,(4,4),strides=(2,2),activation='relu')(x)
+x = Conv2D(40,(4,4),strides=(2,2),activation='relu')(x)
 # now, we will reverse the downsampling using transposed convolutions
 from keras.layers import Conv2DTranspose
-x = Conv2DTranspose(64,(4,4),strides=(2,2),activation='relu')(x)
-x = Conv2DTranspose(32,(3,3),activation='relu')(x)
-x = Conv2DTranspose(32,(3,3),activation='relu')(x)
-x = Conv2DTranspose(32,(4,4),strides=(2,2),activation='relu')(x)
-x = Conv2DTranspose(16,(3,3),activation='relu')(x)
-x = Conv2DTranspose(16,(3,3),activation='relu')(x)
-x = Conv2DTranspose(16,(3,3),activation='relu')(x)
+x = Conv2DTranspose(40,(4,4),strides=(2,2),activation='relu')(x)
+x = Conv2DTranspose(30,(3,3),activation='relu')(x)
+x = Conv2DTranspose(30,(3,3),activation='relu')(x)
+x = Conv2DTranspose(30,(4,4),strides=(2,2),activation='relu')(x)
+x = Conv2DTranspose(20,(3,3),activation='relu')(x)
+x = Conv2DTranspose(20,(3,3),activation='relu')(x)
+x = Conv2DTranspose(20,(3,3),activation='relu')(x)
 # finally, our output layer will need to have a single output
 # channel corresponding to a single segmentation class
 # We will use sigmoid activation that squashed the output to a probability
@@ -267,7 +273,7 @@ print('Final Dice:', 1-score)
 predictions = SegModel.predict(x_val)
 # pick a random slice to examine
 disp_ind = 42
-fig5 = plt.figure()
+plt.figure()
 disp = np.c_[x_val[disp_ind,...,0],predictions[disp_ind,...,0],y_val[disp_ind,...,0]]
 plt.imshow(disp,cmap='gray')
 
@@ -311,13 +317,6 @@ plt.imshow(disp,cmap='gray')
 # earlier in the network again, merged with further processed features
 # in practice, this has shown to be hugely helpful in geting precise
 # localization in segmentation outputs
-# To make networks with this more complicated structure, we can't use
-# the Sequential API. We need the Functional API.
-
-# There are many, many reasons to want to use the functional API
-# However, we will focus on the segmentation application as before,
-# and show how a simple tweak in the functional API will give us
-# significantly better results.
 
 # We'll use the same segmentation data so no need to prepare anything new.
 # Let's jump into model creation.
@@ -325,76 +324,62 @@ plt.imshow(disp,cmap='gray')
 
 #%% Build a segmentation model with skip connections
 
-# The functional model is just called "Model"
-from keras.models import Model
 
-# Some other layers we will need for this model
-from keras.layers import Input, concatenate
+# A new layer we will need for this model
+from keras.layers import concatenate
 
-# Creating a model in this way takes 2 arguments:
-# Inputs
-# Outputs
-# So, we follow a process like this:
-# -Define our input layer(s)
-# -Create the rest of our network connected to those inputs
-# -When we get to our final output layer(s), provide those
-#   and the input(s) to "Model", and the result will be our
-#   functional model!
-
-# Our first layer will be an "Input layer", which is where
-# we define the input shape we will be providing during training
-
+# start like before
 inp = Input(shape=x_train.shape[1:])
-
-# Right now, 'inp' defines our input layer. In the 
-# next step, we will provide 'inp' as an argument to our
-# next layer, which will then be called 'x1'. We need
-# to keep track of these now since we will be using the layers
-# a second time later
-# Adding our first convolutional layer looks like this:
-x1 = Conv2D(10,kernel_size=(3,3),activation='relu')(inp)
-# Notice that we don't need to define the input shape for this
-# layer, since we just did that in the Input layer.
-
-# Let's build the rest of the encoding side of the network
-x2 = Conv2D(20, kernel_size=(3,3),
-                  activation='relu')(x1)
-# Use kernel size of (2,2) to make matching up layers easier later
-x3 = Conv2D(20, kernel_size=(2,2),
+# add on a couple convolutional layers
+# We don't need to keep track of every layer- just
+# a few of them. We won't keep track of the first one
+# but we'll keep the second one and name it x1
+x = Conv2D(10,kernel_size=(3,3),padding='same',activation='relu')(inp)
+x1 = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
+# Add zero padding like before to keep our layer sizes friendly
+# and then perform downsampling
+zp = ZeroPadding2D(padding=(1,1))(x1)
+x = Conv2D(20, kernel_size=(4,4),
                  strides=(2,2),
-                 activation='relu')(x2)
-x4 = Conv2D(30, kernel_size=(3,3),
-                  activation='relu')(x3)
-
-# Now for the decoding side of the network, we will put the
-# functional API to use by including skip connections
-# The first layer is the same as usual. I'll add
-# a 'd' for 'decoding'
-x3d = Conv2DTranspose(30,kernel_size=(3,3),
-                           activation='relu')(x4)
-# Concatenate corresponding layers from the encoding and
-# decoding sides of the network
+                 activation='relu')(zp)
+# Now repeat the process, hanging onto the second layer again
+x = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
+x2 = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
+zp = ZeroPadding2D(padding=(1,1))(x2)
+x = Conv2D(30, kernel_size=(4,4),
+                strides=(2,2),
+                activation='relu')(zp)
+# We've now done 2 downsampling layers, like before.
+# Now for the decoding side of the network, we will start
+# adding skip connections
+# The first couple of layers are the same as usual.
+x = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(30, kernel_size=(3,3),padding='same',activation='relu')(x)
+# Now our upsampling layer
+x = Conv2DTranspose(30, kernel_size=(2,2),
+                          strides=(2,2),
+                          activation='relu')(x)
+# This layer is now the same size as the second layer we kept.
 # It can be tough to get layers to match up just right in size
 # Playing around with kernel size and strides is usually needed
 # so that concatenation can take place. The x,y spatial dimensions
-# must be the same. Number of channels doesn't matter
-cat = concatenate([x3d,x3])
+# must be the same. Number of channels doesn't matter.
+# Luckily, we already did the work for you so these layers can be
+# concatenated
+x = concatenate([x,x2])
 # Now continue to add layers for the decoding side of the
 # network, treating this merged layer like any other
-x2d = Conv2DTranspose(30,kernel_size=(2,2),
+x = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(20, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2DTranspose(30, kernel_size=(2,2),
                           strides=(2,2),
-                          activation='relu')(cat)
-cat = concatenate([x2d,x2])
-# Notice that we can overwrite our previously set variable 'cat'
-# without distrupting the network. The layers are still connected
-# in the order we set them
+                          activation='relu')(x)
+x = concatenate([x,x1])
+x = Conv2D(10, kernel_size=(3,3),padding='same',activation='relu')(x)
+x = Conv2D(10, kernel_size=(3,3),padding='same',activation='relu')(x)
 
-x1d = Conv2DTranspose(20,kernel_size=(3,3),
-                           activation='relu')(cat)
-cat = concatenate([x1d,x1])
 # Final output layer
-out = Conv2DTranspose(1,kernel_size=(3,3),
-                           activation='softmax')(cat)
+out = Conv2D(1,kernel_size=(1,1),activation='softmax')(x)
 
 SegModel2 = Model(inp,out)
 
@@ -403,20 +388,20 @@ SegModel2 = Model(inp,out)
 # format, but it's still a good way to make sure things look right.
 SegModel2.summary()
 
+#%%
 # Now, everything else is just like the previous segmentation model
 # Let's try it out and see how it works!
-SegModel2.compile(loss=dice_coef,
-              optimizer=keras.optimizers.Adam())
+SegModel2.compile(loss=dice_coef,optimizer=keras.optimizers.Adam())
 SegModel2.fit(x_train, y_train,
           batch_size=16,
-          epochs=20,
+          epochs=10,
           verbose=1,
           shuffle=True,
           validation_data=(x_val, y_val))
 
-predictions = SegModel.predict(x_val)
-fig6= plt.figure()
-disp_ind = 44
+predictions = SegModel2.predict(x_val)
+plt.figure()
+disp_ind = 42
 disp = np.c_[x_val[disp_ind,...,0],predictions[disp_ind,...,0],y_val[disp_ind,...,0]]
 plt.imshow(disp,cmap='gray')
 
