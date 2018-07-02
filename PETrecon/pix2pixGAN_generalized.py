@@ -273,11 +273,11 @@ for ii in t:
         lrG = lrG/2
         G_trups = Adam(lr=lrG, beta_1=0.0, beta_2=0.9).get_updates(GenModel_MR2CT.trainable_weights,[], loss_G)
         fn_trainG = K.function([real_MR,real_CT], [-fakeCTloss, loss_L1], G_trups)
-        print('Updated generator learning rate to {:.3g}'.format(lrG))
+        tqdm.write('Updated generator learning rate to {:.3g}'.format(lrG))
         lrD = lrD/2
         D_trups = Adam(lr=lrD, beta_1=0.0, beta_2=0.9).get_updates(DisModel_CT.trainable_weights,[],loss_D)
         fn_trainD = K.function([real_MR, real_CT, ep_input1],[loss_D], D_trups)
-        print('Updated discriminator learning rate to {:.3g}'.format(lrD))
+        tqdm.write('Updated discriminator learning rate to {:.3g}'.format(lrD))
         
     t.set_postfix(Dloss=dis_loss[ii,0],L1Loss = gen_loss[ii,1])
     
