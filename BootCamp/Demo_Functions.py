@@ -10,6 +10,7 @@ import glob
 import numpy as np
 import pydicom
 from skimage.draw import polygon
+import matplotlib.pyplot as plt
 
 def GetLCTSCdata(directory):
     cur_dir = glob.glob(os.path.join(directory, "*", ""))[0]
@@ -56,3 +57,74 @@ def GetLCTSCdata(directory):
         rr, cc = polygon(r, c)
         mask[z_index,rr, cc] = 1
     return ims,mask
+
+#%%
+def display_mask(im,mask):
+    msksiz = np.r_[mask.shape,4]
+    msk = np.zeros(msksiz,dtype=float)
+    msk[...,0] = 1
+    msk[...,1] = 1
+    msk[...,3] = .3*mask.astype(float)
+    
+    im -= np.min(im)
+    im /= np.max(im)
+    
+    fig = plt.figure(figsize=(5,5))
+    plt.imshow(im,cmap='gray',aspect='equal',vmin=0, vmax=1)
+    plt.imshow(msk)
+    plt.tight_layout()
+    fig.axes[0].set_axis_off()
+    plt.show()
+
+#%%
+def mask_viewer(imvol,maskvol,name='Mask Display'):
+    msksiz = np.r_[maskvol.shape,4]
+    msk = np.zeros(msksiz,dtype=float)
+    msk[...,0] = 1
+    msk[...,1] = 1
+    msk[...,3] = .3*maskvol.astype(float)
+    
+    imvol -= np.min(imvol)
+    imvol /= np.max(imvol)
+    
+    fig = plt.figure(figsize=(5,5))
+    fig.index = 0
+    imobj = plt.imshow(imvol[fig.index,...],cmap='gray',aspect='equal',vmin=0, vmax=1)
+    mskobj = plt.imshow(msk[fig.index,...])
+    plt.tight_layout()
+    plt.suptitle(name)
+    ax = fig.axes[0]
+    ax.set_axis_off()
+    txtobj = plt.text(0.05, .95,fig.index+1, ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    fig.imvol = imvol
+    fig.maskvol = msk
+    fig.imobj = imobj
+    fig.mskobj = mskobj
+    fig.txtobj = txtobj
+#    fig.canvas.mpl_connect('scroll_event',on_scroll_m0)
+    
+def on_scroll_m0(event):
+    fig = event.canvas.figure
+    if event.button == 'up':
+        next_slice_m0(fig)
+    elif event.button == 'down':
+        previous_slice_m0(fig)
+    fig.txtobj.set_text(fig.index+1)
+    fig.canvas.draw()
+    
+def previous_slice_m0(fig):
+    imvol = fig.imvol
+    maskvol = fig.maskvol
+    fig.index = np.max([np.min([fig.index-1,imvol.shape[0]-1]),0])
+    fig.imobj.set_data(imvol[fig.index,:,:])
+    fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    fig.canvas.draw()
+
+def next_slice_m0(fig):
+    imvol = fig.imvol
+    maskvol = fig.maskvol
+    fig.index = np.max([np.min([fig.index+1,imvol.shape[0]-1]),0])
+    fig.imobj.set_data(imvol[fig.index,:,:])
+    fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    fig.canvas.draw()
