@@ -1,6 +1,6 @@
-This is makeindex, version 2.15 [MiKTeX 2.9 64-bit] (kpathsea + Thai support).
-Scanning input file UserManual.idx....done (6 entries accepted, 0 rejected).
-Sorting entries....done (18 comparisons).
-Generating output file UserManual.ind....done (19 lines written, 0 warnings).
+This is makeindex, version 2.15 [TeX Live 2015] (kpathsea + Thai support).
+Scanning input file UserManual.idx....done (17 entries accepted, 0 rejected).
+Sorting entries....done (73 comparisons).
+Generating output file UserManual.ind....done (42 lines written, 0 warnings).
 Output written in UserManual.ind.
 Transcript written in UserManual.ilg.

@@ -13,6 +13,7 @@ nibabel
 natsort
 keras
 tensorflow
+tensorflow-gpu
 h5py
 time
 scipy

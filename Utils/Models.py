@@ -10,7 +10,7 @@ import numpy as np
 from keras.layers import Input, Conv2D, concatenate, add, Lambda, Cropping2D
 from keras.layers import BatchNormalization, Conv2DTranspose, ZeroPadding2D
 from keras.layers import UpSampling2D, Conv3D, Reshape, MaxPooling2D
-from keras.layers import Flatten, Dense
+from keras.layers import Flatten, Dense, ZeroPadding3D
 from keras.layers import GlobalAveragePooling2D
 from keras.layers.advanced_activations import LeakyReLU, ELU
 from keras.models import Model
@@ -307,6 +307,87 @@ def GeneratorMS3(input_shape,numBlocks,filtnum=20,use_bn=False):
     lay_res = add([in0,x],name='residual')
     
     return Model(lay_input,lay_res)
+#%% 2D pix2pix discriminator
+def Discriminator2D(conditional_input_shape,test_input_shape,filtnum=16):
+    # Conditional Inputs
+    lay_cond_input = Input(shape=conditional_input_shape,name='conditional_input')
+    
+    xcond = Conv2D(filtnum,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initD,
+                       name='FirstCondLayer')(lay_cond_input)
+    xcond = LeakyReLU(alpha=0.2,name='leaky_cond')(xcond)
+    
+    
+    usebias = False
+    
+    # contracting block 1
+    rr = 1
+    lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv1_{}'.format(rr))(xcond)
+    lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv3_{}'.format(rr))(xcond)
+    lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv51_{}'.format(rr))(xcond)
+    lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
+    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+    lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
+#    bn = batchnorm()(lay_conv_all, training=1)
+    lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
+    lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
+    lay_act1 = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
+    
+    
+    # Testing Input block
+    lay_test_input = Input(shape=test_input_shape,name='test_input')
+    xtest = Conv2D(filtnum,(3,3),padding='valid',strides=(1,1),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='FirstTestLayer')(lay_test_input)
+    xtest = LeakyReLU(alpha=0.2,name='leaky_test')(xtest)
+    # contracting block 1
+    rr = 1
+    lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv1_{}t'.format(rr))(xtest)
+    lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv3_{}t'.format(rr))(xtest)
+    lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv51_{}t'.format(rr))(xtest)
+    lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv52_{}t'.format(rr))(lay_conv51)
+    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}t'.format(rr))
+    lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvAll_{}t'.format(rr))(lay_merge)
+#    bn = batchnorm()(lay_conv_all, training=1)
+    lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1t'.format(rr))(lay_conv_all)
+    lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvStride_{}t'.format(rr))(lay_act)
+    lay_act2 = LeakyReLU(alpha=0.2,name='leaky{}_2t'.format(rr))(lay_stride)
+    
+    # Merge blocks
+    lay_act = concatenate([lay_act1,lay_act2],name='InputMerge')
+    # contracting blocks 2-5
+    for rr in range(2,6):
+        lay_conv1 = Conv2D(filtnum*(2**(rr-1)), (1, 1),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv1_{}'.format(rr))(lay_act)
+        lay_conv3 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv3_{}'.format(rr))(lay_act)
+        lay_conv51 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv51_{}'.format(rr))(lay_act)
+        lay_conv52 = Conv2D(filtnum*(2**(rr-1)), (3, 3),padding='same',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='Conv52_{}'.format(rr))(lay_conv51)
+        lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
+        lay_conv_all = Conv2D(filtnum*(2**(rr-1)),(1,1),padding='valid',kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvAll_{}'.format(rr))(lay_merge)
+#        bn = batchnorm()(lay_conv_all, training=1)
+        lay_act = LeakyReLU(alpha=0.2,name='leaky{}_1'.format(rr))(lay_conv_all)
+        lay_stride = Conv2D(filtnum*(2**(rr-1)),(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initD,
+                       use_bias=usebias,name='ConvStride_{}'.format(rr))(lay_act)
+        lay_act = LeakyReLU(alpha=0.2,name='leaky{}_2'.format(rr))(lay_stride)
+    
+    lay_flat = Flatten()(lay_act)
+    lay_dense = Dense(1,kernel_initializer=conv_initD,name='Dense1')(lay_flat)
+    
+    return Model(inputs=[lay_cond_input,lay_test_input],outputs=[lay_dense])
 
 #%% 3 multislice pix2pix discriminator
 def DiscriminatorMS3(conditional_input_shape,test_input_shape,filtnum=16):
@@ -867,3 +948,91 @@ def CycleGANdiscriminator(input_shape,filtnum=16,numBlocks=3):
     lay_avg = GlobalAveragePooling2D()(lay_one)
     
     return Model(lay_input,lay_avg)
+
+#%%
+def EncoderBlock(ind,filtmult,x):
+    x1 = Conv2D(filtmult*ind, (1, 1),padding='same',kernel_initializer=conv_initG,
+                           name='Conv1_{}'.format(ind))(x)
+    x1 = ELU(name='elu_1_{}'.format(ind))(x1)
+    x3 = Conv2D(filtmult*ind, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv3_{}'.format(ind))(x)
+    x3 = ELU(name='elu_3_{}'.format(ind))(x3)
+    x51 = Conv2D(filtmult*ind, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv51_{}'.format(ind))(x)
+    x51 = ELU(name='elu_51_{}'.format(ind))(x51)
+    x52 = Conv2D(filtmult*ind, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       name='Conv52_{}'.format(ind))(x51)
+    x52 = ELU(name='elu_52_{}'.format(ind))(x52)
+    lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(ind))
+    x = Conv2D(filtmult*ind,(1,1),padding='valid',kernel_initializer=conv_initG,
+                       name='ConvAll_{}'.format(ind))(lay_merge)
+    x = ELU(name='elu_all_{}'.format(ind))(x)
+    x = ZeroPadding2D(padding=(1,1))(x)
+    x = Conv2D(filtmult*ind,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
+                       name='ConvStride_{}'.format(ind))(x)
+    x = ELU(name='elu_stride_{}'.format(ind))(x)
+    return x
+#%%
+def DecoderBlock(ind,ind2,filtmult,x,is_res=False):
+    filts = filtmult*(ind-ind2+1)
+    x1 = Conv2D(filts,(1,1),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv1_{}-{}'.format(ind,ind2))(x)
+    x1 = ELU(name='elu_d1_{}-{}'.format(ind,ind2))(x1)
+    x3 = Conv2D(filts,(3,3),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv3_{}-{}'.format(ind,ind2))(x)
+    x3 = ELU(name='elu_d3_{}-{}'.format(ind,ind2))(x3)
+    x51 = Conv2D(filts, (3,3),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv51_{}-{}'.format(ind,ind2))(x)
+    x51 = ELU(name='elu_d51_{}-{}'.format(ind,ind2))(x51)
+    x52 = Conv2D(filts, (3,3),padding='same',kernel_initializer=conv_initG,
+                       name='DeConv52_{}-{}'.format(ind,ind2))(x51)
+    x52 = ELU(name='elu_d52_{}-{}'.format(ind,ind2))(x52)
+    x = concatenate([x1,x3,x52],name='merge_d{}-{}'.format(ind,ind2))
+    x = Conv2D(filts,(1,1),padding='valid',kernel_initializer=conv_initG,
+                       use_bias=False,name='DeConvAll_{}-{}'.format(ind,ind2))(x)
+    x = ELU(name='elu_d-all_{}-{}'.format(ind,ind2))(x)    
+    x = UpSampling2D()(x)
+    x = Conv2DTranspose(filts, (3, 3),padding='same',kernel_initializer=conv_initG,
+                       use_bias=False,name='cleanup_{}-{}'.format(ind,ind2))(x)
+    x = ELU(name='elu_cleanup_{}-{}'.format(ind,ind2))(x)
+    if is_res:
+        x = Conv2D(1, (1,1), padding='same',kernel_initializer=conv_initG,
+                       use_bias=False,name='res_{}'.format(ind))(x)
+    return x
+#%% Layered Residual Model with MS = 3
+def ResBlockModel(input_shape,numBlocks=3,filtnum=16):
+    # Input layer
+    lay_input = Input(shape=input_shape,name='input_layer')
+    # extract PET image channel from center slice
+    res = Lambda(lambda x : x[:,1,...,0],name='channel_split')(lay_input)
+    res = Reshape([256,256,1])(res)
+    
+    # Pad input before 3D conv to get right output shape
+    padamt = 1
+    zp = ZeroPadding3D(padding=((0,0),(padamt,padamt),(padamt,padamt)),data_format=None)(lay_input)
+    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(zp)
+    if use_bn:
+        bn = batchnorm()(MSconv, training=1)
+        MSact = ELU(name='MSelu')(bn)
+    else:
+        MSact = ELU(name='MSelu')(MSconv)
+    x = Reshape((256,256,16))(MSact)
+    
+    block_ends = []
+    aa = 0
+    for rr in range(1,numBlocks+1):
+        # encoder
+        x = EncoderBlock(rr,filtnum,x)
+        block_ends.append(x)
+        for dd in range(1,rr+1):
+            # decoder
+            x = DecoderBlock(rr,dd,filtnum,x,dd==rr)
+            if dd==rr:
+                res = add([res,x])
+                x = block_ends[aa]
+            else:
+                x = concatenate([x,block_ends[aa]],name='connect_{}'.format(aa))
+                aa += 1
+                block_ends.append(x)
+    
+    return Model(lay_input,res)

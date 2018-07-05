@@ -6,27 +6,30 @@ Created on Wed May 31 14:06:34 2017
 """
 import sys
 import os
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import optimizers
 #from keras.metrics import mean_absolute_error as mae_metric
 #from keras.losses import mean_absolute_error as mae_loss
 from keras.models import load_model
 from matplotlib import pyplot as plt
-from my_callbacks import Histories
 import numpy as np
 import h5py
 import time
-from CustomMetrics import weighted_mse, dice_coef_multi
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+from CustomMetrics import weighted_mse
+import GPUtil
+if not 'DEVICE_ID' in locals():
+    DEVICE_ID = GPUtil.getFirstAvailable()[0]
+    print('Using GPU',DEVICE_ID)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
 numEp = 50
 b_s = 4
-dual_output = True
+dual_output = False
 filterMult = 8
 #%%
 # Model Save Path/name
-model_filepath = 'MuMapModel_4.hdf5'
+model_filepath = 'MuMapModel_test.hdf5'
 # Data path/name
 datapath = 'petrecondata_tvt_v4.hdf5'
 MSos = 1    # MultiSlice offset
@@ -144,15 +147,18 @@ def BlockModel_reg(samp_input,dual_output,fnum=8):
     return returnModel
     
 #%% callbacks
-earlyStopping = EarlyStopping(monitor='val_reg_output_loss',patience=10,verbose=1,mode='auto')
-
-checkpoint = ModelCheckpoint(model_filepath, monitor='val_reg_output_loss',verbose=0,
+#earlyStopping = EarlyStopping(monitor='val_reg_output_loss',patience=10,verbose=1,mode='auto')
+if dual_output:
+    checkpoint = ModelCheckpoint(model_filepath, monitor='val_reg_output_loss',verbose=0,
+                             save_best_only=True, save_weights_only=False,
+                             mode='auto', period=1)
+else:
+    checkpoint = ModelCheckpoint(model_filepath, monitor='val_loss',verbose=0,
                              save_best_only=True, save_weights_only=False,
                              mode='auto', period=1)
 
-hist = Histories()
-
-CBs = [checkpoint,earlyStopping,hist]
+#CBs = [checkpoint,earlyStopping]
+CBs = [checkpoint]
 
 #%% prepare model for training
 print("Generating model")
@@ -165,23 +171,28 @@ if dual_output:
                  loss_weights={'reg_output': 1., 'class_output': .3})
 else:
     RegModel.compile(optimizer=adopt,loss= weighted_mse)
-#RegModel.compile(loss=ssim_loss, optimizer=adopt,metrics=[weighted_mse])
 
 #%% training
 print('Starting training')
 
-history = RegModel.fit(x_train,
+if dual_output:
+    history = RegModel.fit(x_train,
                        {'reg_output': y_reg_train,'class_output':y_class_train},
                        batch_size=b_s, epochs=numEp,shuffle=True,
                        validation_data=(x_val,{'reg_output': y_reg_val,'class_output':y_class_val}),
+                       verbose=1,
+                       callbacks=CBs)
+else:
+    history = RegModel.fit(x_train,y_reg_train,
+                       batch_size=b_s, epochs=numEp,shuffle=True,
+                       validation_data=(x_val, y_reg_val),
                        verbose=1,
                        callbacks=CBs)
 
 print('Training complete')
 
 print('Loading best model...')
-RegModel = load_model(model_filepath,custom_objects={'weighted_mse':weighted_mse,
-                                                     'dice_coef_multi':dice_coef_multi})
+RegModel = load_model(model_filepath,custom_objects={'weighted_mse':weighted_mse})
 
 score = RegModel.evaluate(x_test,{'reg_output': y_reg_test,'class_output':y_class_test})
 print("")
@@ -195,33 +206,81 @@ time1 = time.time()
 output = RegModel.predict(x_test,batch_size=pr_bs)
 time2 = time.time()
 print('Infererence time: ',1000*(time2-time1)/x_test.shape[0],' ms per slice')
-reg_output = output[0]
-class_output = output[1]
+if dual_output:
+    reg_output = output[0]
+    class_output = output[1]
+else:
+    reg_output = output
 
 
-val_output = RegModel.predict(x_val,batch_size=pr_bs)
-val_reg_output = val_output[0]
-val_class_output = val_output[1]
+#val_output = RegModel.predict(x_val,batch_size=pr_bs)
+#val_reg_output = val_output[0]
+#val_class_output = val_output[1]
+#
+#from skimage.measure import compare_ssim as ssim
+#SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_reg_test[...,0],reg_output[...,0])]
+#val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_reg_val[...,0],val_reg_output[...,0])]
+#
+#num_bins = 10
+#fig3 = plt.figure()
+#n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
+#plt.show()
+#print('Mean SSIM of ', np.mean(SSIMs))
+#print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
+#
+## process classification result
+#val_class_inds = np.argmax(val_class_output,axis=3)
+#yval_class_inds = np.argmax(y_class_val,axis=3)
+#test_class_inds = np.argmax(class_output,axis=3)
+#ytest_class_inds = np.argmax(y_class_test,axis=3)
+#
+#from VisTools import multi_slice_viewer0
+#multi_slice_viewer0(np.c_[x_test[:,MSos,...,0],reg_output[...,0],y_reg_test[...,0],ytest_class_inds/3,test_class_inds/3],'Test Data',SSIMs)
+#multi_slice_viewer0(np.c_[x_val[:,MSos,...,0],val_reg_output[...,0],y_reg_val[...,0],yval_class_inds/3,val_class_inds/3],'Val Data',val_SSIMs)
 
-from skimage.measure import compare_ssim as ssim
-SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_reg_test[...,0],reg_output[...,0])]
-val_SSIMs = [ssim(im1,im2) for im1, im2 in zip(y_reg_val[...,0],val_reg_output[...,0])]
+mae = np.mean(np.abs(reg_output-y_reg_test))
+print('Mean Absolute Error is:',mae)
+#%% plotting
+print('Plotting metrics')
+step = np.minimum(b_s/x_train.shape[0],1)
+actEpochs = len(history.history['loss'])
+epochs = np.arange(1,actEpochs+1)
 
-num_bins = 10
-fig3 = plt.figure()
-n, bins, _ = plt.hist(SSIMs, num_bins, facecolor='blue', edgecolor='black', alpha=0.5)
+fig2 = plt.figure(1,figsize=(12.0, 6.0));
+if dual_output:
+    plt.semilogy(epochs,history.history['reg_output_loss'],'r-s')
+    plt.semilogy(epochs,history.history['val_reg_output_loss'],'m-s')
+else:
+    plt.semilogy(epochs,history.history['loss'],'r-s')
+    plt.semilogy(epochs,history.history['val_loss'],'m-s')
+plt.legend(['Regression Training Loss',
+            'Regression Validation Loss'])
+plt.xlabel('Epochs')
+plt.ylabel('Mean Absolute Error')
 plt.show()
-print('Mean SSIM of ', np.mean(SSIMs))
-print('SSIM range of ', np.round(np.min(SSIMs),3), ' - ', np.round(np.max(SSIMs),3))
 
-# process classification result
-val_class_inds = np.argmax(val_class_output,axis=3)
-yval_class_inds = np.argmax(y_class_val,axis=3)
-test_class_inds = np.argmax(class_output,axis=3)
-ytest_class_inds = np.argmax(y_class_test,axis=3)
+if dual_output:
+    np.savetxt('Loss_Dual.txt',np.c_[history.history['reg_output_loss'],history.history['val_reg_output_loss']])
+else:
+    np.savetxt('Loss_noDual.txt',np.c_[history.history['loss'],history.history['val_loss']])
 
-from VisTools import multi_slice_viewer0
-multi_slice_viewer0(np.c_[x_test[:,MSos,...,0],reg_output[...,0],y_reg_test[...,0],ytest_class_inds/3,test_class_inds/3],'Test Data',SSIMs)
-multi_slice_viewer0(np.c_[x_val[:,MSos,...,0],val_reg_output[...,0],y_reg_val[...,0],yval_class_inds/3,val_class_inds/3],'Val Data',val_SSIMs)
+#%%
+data = np.loadtxt('Loss_noDual.txt')
+nodual_train = data[:,0]
+nodual_val = data[:,1]
+data = np.loadtxt('Loss_Dual.txt')
+dual_train = data[:,0]
+dual_val = data[:,1]
 
-
+fig3 = plt.figure(2,figsize=(12.0, 6.0));
+plt.semilogy(epochs,dual_train,'r-')
+plt.semilogy(epochs,dual_val,'rs')
+plt.semilogy(epochs,nodual_train,'b-')
+plt.semilogy(epochs,nodual_val,'bs')
+plt.legend(['Dual Training Loss',
+            'Dual Validation Loss',
+            'NonDual Training Loss',
+            'NonDual Validation Loss'])
+plt.xlabel('Epochs')
+plt.ylabel('Mean Absolute Error')
+plt.show()
