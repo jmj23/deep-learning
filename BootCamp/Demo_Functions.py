@@ -102,7 +102,7 @@ def mask_viewer(imvol,maskvol,name='Mask Display'):
     fig.imobj = imobj
     fig.mskobj = mskobj
     fig.txtobj = txtobj
-#    fig.canvas.mpl_connect('scroll_event',on_scroll_m0)
+    fig.canvas.mpl_connect('scroll_event',on_scroll_m0)
     
 def on_scroll_m0(event):
     fig = event.canvas.figure
