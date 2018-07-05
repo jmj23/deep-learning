@@ -7,6 +7,7 @@ Created on Thu May 18 11:04:03 2017
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import os
 #%%
 def showmask(im,mask):
@@ -93,7 +94,124 @@ def next_slice(ax):
     ax.txtobj.set_text(ax.index+1)
     if ax.has_labels:
         ax.lblobj.set_text(ax.labels[ax.index])
+
+#%%
+def ROIviewer(volume,coord1,coord2):
+    # Volume: image volume ndarray in format [slices,rows,columns]
     
+    fig, ax = plt.subplots()
+    if len(volume.shape) != 3:
+        print('Volume must be 3D array')
+        return
+    ax.volume = volume
+    ax.index = 0
+    ax.imshow(volume[ax.index,...],cmap='gray',vmin=0, vmax=1)
+    ax.set_axis_off()
+    txtobj = plt.text(0.05, .95,ax.index+1, ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    ax.txtobj = txtobj
+    # create ROI
+    x = coord1[0]
+    y = coord1[1]
+    w = coord2[0]-x
+    h = coord2[1]-y
+    rect = patches.Rectangle((x,y),w,h,linewidth=1,edgecolor='r',facecolor='none')
+    # Add the patch to the Axes
+    ax.add_patch(rect)
+    fig.canvas.mpl_connect('scroll_event',ROIon_scroll)
+
+def ROIon_scroll(event):
+    fig = event.canvas.figure
+    ax = fig.axes[0]
+    if event.button == 'up':
+        ROInext_slice(ax)
+    elif event.button == 'down':
+        ROIprevious_slice(ax)
+    fig.canvas.draw()
+
+def ROIprevious_slice(ax):
+    volume = ax.volume
+    ax.index = np.max([np.min([ax.index - 1,volume.shape[0]-1]),0])
+    ax.images[0].set_array(volume[ax.index,...])
+    ax.txtobj.set_text(ax.index+1)
+
+def ROInext_slice(ax):
+    volume = ax.volume
+    ax.index = np.max([np.min([ax.index + 1,volume.shape[0]-1]),0])
+    ax.images[0].set_array(volume[ax.index,...])
+    ax.txtobj.set_text(ax.index+1)
+    
+#%%
+def MultiROIviewer(volume,coord_array):
+    # Volume: image volume ndarray in format [slices,rows,columns]
+    # coord_array: [slices,coords]
+    # coords: [...,x1,y1,x2,y2,mb,...]
+    
+    fig, ax = plt.subplots()
+    if len(volume.shape) != 3:
+        print('Volume must be 3D array')
+        return
+    ax.volume = volume
+    ax.index = 0
+    ax.imshow(volume[ax.index,...],cmap='gray',vmin=0, vmax=1)
+    ax.set_axis_off()
+    txtobj = plt.text(0.05, .95,ax.index+1, ha='left', va='top',color='red',
+                      transform=ax.transAxes)
+    ax.txtobj = txtobj
+    # get ROI coordinates
+    spots = [0,5,10,15]
+    roi_data = [np.max(coord_array[:,s:s+5],axis=0) for s in spots]
+    # get ROI slices
+    roi_inds = [np.where(coord_array[:,s]>0) for s in spots]
+    # convert to (x,y,w,h)
+    roi_xywh = [(c[0],c[1],c[2]-c[0],c[3]-c[1]) for c in roi_data]
+    # create rectangle patches
+    rects = [patches.Rectangle((c[0],c[1]),c[2],c[3],linewidth=1,edgecolor='r',facecolor='none') for c in roi_xywh]
+    # Add the patch to the Axes
+    for rect in rects:
+        ax.add_patch(rect)
+    ax.rects = rects
+    ax.roi_inds = roi_inds
+    for ii in range(4):
+        if np.any(ax.index==roi_inds[ii][0]):
+            rects[ii].set_visible(True)
+        else:
+            rects[ii].set_visible(False)
+            
+    fig.canvas.mpl_connect('scroll_event',MultiROIon_scroll)
+
+def MultiROIon_scroll(event):
+    fig = event.canvas.figure
+    ax = fig.axes[0]
+    if event.button == 'up':
+        MultiROInext_slice(ax)
+    elif event.button == 'down':
+        MultiROIprevious_slice(ax)
+    fig.canvas.draw()
+
+def MultiROIprevious_slice(ax):
+    volume = ax.volume
+    ax.index = np.max([np.min([ax.index - 1,volume.shape[0]-1]),0])
+    ax.images[0].set_array(volume[ax.index,...])
+    ax.txtobj.set_text(ax.index+1)
+    for ii in range(4):
+        if np.any(ax.index==ax.roi_inds[ii][0]):
+            ax.rects[ii].set_visible(True)
+        else:
+            ax.rects[ii].set_visible(False)
+
+def MultiROInext_slice(ax):
+    volume = ax.volume
+    ax.index = np.max([np.min([ax.index + 1,volume.shape[0]-1]),0])
+    ax.images[0].set_array(volume[ax.index,...])
+    ax.txtobj.set_text(ax.index+1)
+    for ii in range(4):
+        if np.any(ax.index==ax.roi_inds[ii][0]):
+            ax.rects[ii].set_visible(True)
+        else:
+            ax.rects[ii].set_visible(False)
+
+
 #%%
 def mask_viewer0(imvol,maskvol,name='Mask Display'):
     msksiz = np.r_[maskvol.shape,4]
