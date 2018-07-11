@@ -163,10 +163,13 @@ def MultiROIviewer(volume,coord_array):
     roi_data = [np.max(coord_array[:,s:s+5],axis=0) for s in spots]
     # get ROI slices
     roi_inds = [np.where(coord_array[:,s]>0) for s in spots]
-    # convert to (x,y,w,h)
-    roi_xywh = [(c[0],c[1],c[2]-c[0],c[3]-c[1]) for c in roi_data]
+    # convert to (x,y,w,h,b/m)
+    roi_xywh = [(c[0],c[1],c[2]-c[0],c[3]-c[1],c[4]) for c in roi_data]
     # create rectangle patches
-    rects = [patches.Rectangle((c[0],c[1]),c[2],c[3],linewidth=1,edgecolor='r',facecolor='none') for c in roi_xywh]
+    rects = [patches.Rectangle((c[0],c[1]),c[2],c[3],
+                               linewidth=1,
+                               edgecolor='r' if c[4]==2 else 'g',
+                               facecolor='none') for c in roi_xywh]
     # Add the patch to the Axes
     for rect in rects:
         ax.add_patch(rect)
@@ -211,7 +214,52 @@ def MultiROInext_slice(ax):
         else:
             ax.rects[ii].set_visible(False)
 
-
+#%%
+def CollectYOLO(targ,gw,gh,xi,yi):
+    # get center x and y
+    bx = gw / (1 + np.exp(-targ[0])) + xi*gw
+    by = gh / (1 + np.exp(-targ[1])) + yi*gh
+    # get width and height
+    bw = gw*np.exp(targ[2])
+    bh = gh*np.exp(targ[3])
+    # convert center to corner x,y
+    bx -= bw/2
+    by -= bh/2
+    # get class
+    malig = np.float(targ[6]>targ[5])
+    return bx,by,bw,bh,malig
+#%%
+def ConvertYOLOtoCoords(target,imdim,conf):
+    # look for objects
+    (xinds,yinds) = np.where(target[...,4]>conf)
+    # get grid parameters
+    nx = target.shape[0]
+    ny = target.shape[1]
+    gw = imdim[0]/nx
+    gh = imdim[1]/ny
+    # loop over all objects detected
+    roi_dat = [CollectYOLO(target[xi,yi,:],gw,gh,xi,yi) for xi,yi in zip(xinds,yinds)]
+    return roi_dat
+    
+#%%
+def YOLOviewer(im,target,conf=.5):
+    # im: image ndarray in format [rows,columns]
+    # target: YOLO target array in format [row,columns,7 data channels]
+    # conf: confidence cutoff for objects
+    assert len(im.shape)==2
+    fig, ax = plt.subplots()
+    ax.imshow(im,cmap='gray',vmin=np.min(im), vmax=np.max(im))
+    ax.set_axis_off()
+    # get coordinates from YOLO target
+    roi_xywh = ConvertYOLOtoCoords(target,im.shape,conf)
+    # create rectangle patches
+    rects = [patches.Rectangle((c[0],c[1]),c[2],c[3],
+                               linewidth=1,
+                               edgecolor='r' if c[4]==1 else 'g',
+                               facecolor='none') for c in roi_xywh]
+    # Add the patch to the Axes
+    for rect in rects:
+        ax.add_patch(rect)
 #%%
 def mask_viewer0(imvol,maskvol,name='Mask Display'):
     msksiz = np.r_[maskvol.shape,4]
@@ -391,6 +439,7 @@ def next_slice_r0(fig):
     fig.imobj.set_data(imvol[fig.index,:,:])
     fig.mskobj.set_data(maskvol[fig.index,:,:,:])
     fig.canvas.draw()    
+
 #%%
 def save_masked_image(imvol,maskvol,name='image'):
     msksiz = np.r_[maskvol.shape,4]
