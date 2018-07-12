@@ -40,5 +40,6 @@ pip install keras
 conda install scikit-image
 conda install scipy
 conda install -c conda-forget --no-deps pydicom
-# download demo_functions script
+# download notebook and scripts
+wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/SegmentationBootcamp.ipynb
 wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/Demo_Functions.py
