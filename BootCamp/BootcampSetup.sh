@@ -13,7 +13,9 @@ fi
 sudo nvidia-smi -pm 1
 # disable autoboost for performance
 sudo nvidia-smi --auto-boost-default=DISABLED
-# Make sure cuDNN .deb file is present before these steps
+# Download cuDNN library
+gsutil cp gs://ml4mi_bootcamp/libcudnn7_7.1.4.18-1+cuda9.0_amd64.deb
+# install cuDNN library
 sudo dpkg -i libcudnn7_7.1.4.18-1+cuda9.0+amd64.deb
 
 # install Anaconda
@@ -38,3 +40,6 @@ conda install -cy conda-forge --no-deps pydicom
 # download jupyter notebook and scripts
 wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/SegmentationBootcamp.ipynb
 wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/Demo_Functions.py
+# download segmentation data
+echo "Downloading LCTSC data"
+gsutil -q cp -r gs://ml4mi_bootcamp/LCTSC .
