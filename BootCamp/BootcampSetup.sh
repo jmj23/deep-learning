@@ -13,11 +13,6 @@ fi
 sudo nvidia-smi -pm 1
 # disable autoboost for performance
 sudo nvidia-smi --auto-boost-default=DISABLED
-# # make sure cuDNN tar file is present before these steps
-# tar -xzvf cudnn-9.0-linux-x64-v7.tgz
-# sudo cp cuda/include/cudnn.h /usr/local/cuda/include
-# sudo cp cuda/lib64/libcudnn* /usr/local/cuda/lib64
-# sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
 # Make sure cuDNN .deb file is present before these steps
 sudo dpkg -i libcudnn7_7.1.4.18-1+cuda9.0+amd64.deb
 
@@ -35,11 +30,11 @@ echo "c.NotebookApp.open_browser = False" >> ~/.jupyter/jupyter_notebook_config.
 echo "c.NotebookApp.port = 8888" >> ~/.jupyter/jupyter_notebook_config.py
 sudo ufw allow 8888/tcp
 # install other packages
-pip install tensorflow-gpu
-pip install keras
-conda install scikit-image
-conda install scipy
-conda install -c conda-forge --no-deps pydicom
+pip install -q tensorflow-gpu
+pip install -q keras
+conda install -y scikit-image
+conda install -y scipy
+conda install -cy conda-forge --no-deps pydicom
 # download jupyter notebook and scripts
 wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/SegmentationBootcamp.ipynb
 wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/Demo_Functions.py
