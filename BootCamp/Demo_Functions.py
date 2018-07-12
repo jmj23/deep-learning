@@ -23,7 +23,8 @@ def GetLCTSCdata(directory):
     ims = np.stack([dcm.pixel_array.astype(np.float) for dcm in dicms])
     # normalize
     for im in ims:
-        im /= np.max(im)
+        im -= np.mean(im)
+        im /= np.std(im)
     # get labels
     label = pydicom.read_file(lbl_file)
     contour_names = [s.ROIName for s in label.StructureSetROISequence]
