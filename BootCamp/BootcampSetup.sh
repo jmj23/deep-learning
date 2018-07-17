@@ -47,9 +47,12 @@ wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/Demo_Functions.p
 echo "Downloading LCTSC data"
 gsutil -q cp -r gs://ml4mi_bootcamp/LCTSC .
 # download classification data
+# first install unzip
+sudo apt-get isntall unzip -y
 echo "Downloading NIH CXR data"
-gsutil -q cp -r gs://ml4mi_bootcamp/data .
+gsutil -q cp -r gs://ml4mi_bootcamp/data.zip .
 gsutil -q cp gs://ml4mi_bootcamp/male_female_basic_example.ipynb .
+unzip data.zip
 
 # setup jupyter notebook password
 echo "Setting up jupyter notebook password"
