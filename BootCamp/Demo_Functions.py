@@ -60,7 +60,7 @@ def GetLCTSCdata(directory):
     return ims,mask
 
 #%%
-def display_mask(im,mask):
+def display_mask(im,mask,name='Mask Display'):
     msksiz = np.r_[mask.shape,4]
     msk = np.zeros(msksiz,dtype=float)
     msk[...,0] = 1
@@ -73,6 +73,7 @@ def display_mask(im,mask):
     fig = plt.figure(figsize=(5,5))
     plt.imshow(im,cmap='gray',aspect='equal',vmin=0, vmax=1)
     plt.imshow(msk)
+    plt.suptitle(name)
     plt.tight_layout()
     fig.axes[0].set_axis_off()
     plt.show()
