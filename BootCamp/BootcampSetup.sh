@@ -50,7 +50,7 @@ gsutil -q cp -r gs://ml4mi_bootcamp/LCTSC .
 # first install unzip
 sudo apt-get isntall unzip -y
 echo "Downloading NIH CXR data"
-gsutil -q cp -r gs://ml4mi_bootcamp/CXR_data.zip .
+gsutil -q cp gs://ml4mi_bootcamp/CXR_data.zip .
 gsutil -q cp gs://ml4mi_bootcamp/male_female_basic_example.ipynb .
 unzip data.zip
 
