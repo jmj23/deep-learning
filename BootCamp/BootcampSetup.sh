@@ -14,17 +14,20 @@ sudo nvidia-smi -pm 1
 # disable autoboost for performance
 sudo nvidia-smi --auto-boost-default=DISABLED
 # Download cuDNN library
+echo "Downloading cuDNN library"
 gsutil cp gs://ml4mi_bootcamp/libcudnn7_7.1.4.18-1+cuda9.0_amd64.deb
 # install cuDNN library
 sudo dpkg -i libcudnn7_7.1.4.18-1+cuda9.0+amd64.deb
 
 # install Anaconda
+echo "Installing Anaconda"
 wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
-bash Anaconda3-5.0.1-Linux-x86_64.sh -b
+bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p ~/anaconda3
 echo 'export PATH=~/anaconda3/bin:$PATH' >> ~/.bashrc
 export PATH=~/anaconda3/bin:$PATH
-source ~/.bashrc
-conda env update
+conda create -y --name env_keras python=3.5
+echo 'source activate env_keras' >> ~/.bashrc
+source activate env_keras
 # configure jupyter notebook
 jupyter notebook --generate-config
 echo "c.NotebookApp.ip = '*'" >> ~/.jupyter/jupyter_notebook_config.py
@@ -43,3 +46,13 @@ wget https://github.com/jmj23/deep-learning/raw/master/BootCamp/Demo_Functions.p
 # download segmentation data
 echo "Downloading LCTSC data"
 gsutil -q cp -r gs://ml4mi_bootcamp/LCTSC .
+# download classification data
+echo "Downloading NIH CXR data"
+gsutil -q cp -r gs://ml4mi_bootcamp/data .
+gsutil -q cp gs://ml4mi_bootcamp/male_female_basic_example.ipynb .
+
+# setup jupyter notebook password
+echo "Setting up jupyter notebook password"
+jupyter notebook password
+
+echo "Reboot is required"
