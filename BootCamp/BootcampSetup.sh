@@ -48,11 +48,11 @@ echo "Downloading LCTSC data"
 gsutil -q cp -r gs://ml4mi_bootcamp/LCTSC .
 # download classification data
 # first install unzip
-sudo apt-get isntall unzip -y
+sudo apt-get install unzip -y
 echo "Downloading NIH CXR data"
 gsutil -q cp gs://ml4mi_bootcamp/CXR_data.zip .
 gsutil -q cp gs://ml4mi_bootcamp/male_female_basic_example.ipynb .
-unzip data.zip
+unzip CXR_data.zip -d ./CXR_Data
 
 # setup jupyter notebook password
 echo "Setting up jupyter notebook password"
