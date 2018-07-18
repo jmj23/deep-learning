@@ -67,8 +67,8 @@ def display_mask(im,mask,name='Mask Display'):
     msk[...,1] = 1
     msk[...,3] = .3*mask.astype(float)
     
-    im -= np.min(im)
-    im /= np.max(im)
+    im = im-np.min(im)
+    im = im/np.max(im)
     
     fig = plt.figure(figsize=(5,5))
     plt.imshow(im,cmap='gray',aspect='equal',vmin=0, vmax=1)
@@ -86,8 +86,8 @@ def mask_viewer(imvol,maskvol,name='Mask Display'):
     msk[...,1] = 1
     msk[...,3] = .3*maskvol.astype(float)
     
-    imvol -= np.min(imvol)
-    imvol /= np.max(imvol)
+    imvol = imvol-np.min(imvol)
+    imvol = imvol/np.max(imvol)
     
     fig = plt.figure(figsize=(5,5))
     fig.index = 0
