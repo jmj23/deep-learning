@@ -28,14 +28,15 @@ export PATH=~/anaconda3/bin:$PATH
 conda create -y --name env_keras python=3.5
 echo 'source activate env_keras' >> ~/.bashrc
 source activate env_keras
-# configure jupyter notebook
+# install and configure jupyter notebook
+conda install -y jupyter
 jupyter notebook --generate-config
 echo "c.NotebookApp.ip = '*'" >> ~/.jupyter/jupyter_notebook_config.py
 echo "c.NotebookApp.open_browser = False" >> ~/.jupyter/jupyter_notebook_config.py
 echo "c.NotebookApp.port = 8888" >> ~/.jupyter/jupyter_notebook_config.py
 sudo ufw allow 8888/tcp
 # install other packages
-pip install -q tensorflow-gpu
+pip install -q tensorflow-gpu==1.8
 pip install -q keras
 conda install -y scikit-image
 conda install -y scipy
