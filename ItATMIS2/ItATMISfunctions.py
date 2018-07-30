@@ -5,6 +5,8 @@ Created on Thu Jul 26 14:52:53 2018
 
 @author: jmj136
 """
+
+#%% Block Segmentation Model
 import numpy as np
 from keras.layers import Input,Cropping2D,Conv2D,concatenate
 from keras.layers import BatchNormalization,ELU,UpSampling2D
@@ -157,14 +159,14 @@ def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2):
                         steps_per_epoch=steps,
                         epochs=numEp,
                         callbacks=CBs,
-                        verbose=2,
+                        verbose=0,
                         validation_data=(valX,valY))
     return model
 #%% Plot ItATMIS simulation results
 from matplotlib import pyplot as plt
 from glob import glob
 def PlotResults(anatomy):
-    txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*'.format(anatomy)
+    txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
     result_files = glob(txt_path)
     
     scores = [np.loadtxt(f) for f in result_files]
