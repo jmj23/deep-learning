@@ -1122,13 +1122,12 @@ class MainApp(QtBaseClass1,Ui_MainWindow):
 
                 self.model.compile(optimizer=self.adopt, loss=dice_multi_loss)
                 
-            # Set checkpoint callback if not already set
-            if self.cb_check == []:
-                print('Making callback...')
-                self.cb_check = ModelCheckpoint(self.model_weights_path,monitor='val_loss',
-                                           verbose=0,save_best_only=True,
-                                           save_weights_only=True,
-                                           mode='auto',period=1)
+            # Set checkpoint callback
+            print('Making callback...')
+            self.cb_check = ModelCheckpoint(self.model_weights_path,monitor='val_loss',
+                                       verbose=0,save_best_only=True,
+                                       save_weights_only=True,
+                                       mode='auto',period=1)
             
             print('Creating training thread...')
             # Start Training Thread
