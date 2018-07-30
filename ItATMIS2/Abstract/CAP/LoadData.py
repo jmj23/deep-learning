@@ -30,8 +30,6 @@ dcm_files = []
 for root, dirs, files in os.walk(cur_dir):
     dcm_files = dcm_files + [(os.path.join(root,f)) for f in files if f.endswith('.dcm')]
 
-dcm_dirs = glob(os.path.join(cur_dir,'*'))
-dcm_files = glob(os.path.join(dcm_dirs[0],'*.dcm'))
 # load dicom files
 dcms = [dcm.read_file(f) for f in dcm_files]
 # prepare sorting list of tuples
