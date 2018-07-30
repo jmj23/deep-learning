@@ -37,18 +37,10 @@ data_dir = '/data/jmj136/ItATMIS/Breast'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Breast/best_model_weights.h5'
 val_frac = 0.2
 cross_val_num = 1
-num_CV_folds = 3
-maxIters = 5
+num_CV_folds = 30
+maxIters = 20
 
-cb_check = ModelCheckpoint(model_weights_path,
-                           monitor='val_loss',
-                           verbose=0,save_best_only=True,
-                           save_weights_only=True,
-                           mode='auto',period=1)
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
-
-CBs = [cb_check,cb_eStop]
-
 #%% Load data
 files = natsorted(glob(os.path.join(data_dir,'*.mat')))
 subjs = range(len(files))
@@ -85,7 +77,13 @@ for it in range(maxIters):
     for cur_num_subj in range(1,maxIter+1):
         cur_inputs = np.concatenate(train_inputs[:cur_num_subj])
         cur_targets = np.concatenate(train_targets[:cur_num_subj])[...,np.newaxis]
-        print('Including {} subjects on CV fold {}'.format(cur_num_subj,it+1))
+        # make callbacks
+        cb_check = ModelCheckpoint(model_weights_path,monitor='val_loss',
+                                   verbose=0,save_best_only=True,
+                                   save_weights_only=True,mode='auto',period=1)
+        
+        CBs = [cb_check,cb_eStop]
+        print('Including {} subjects on CV fold {}...'.format(cur_num_subj,it+1))
         time1 = time()
         model = SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac)
         time2 = time()
