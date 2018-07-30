@@ -106,3 +106,73 @@ def dice_coef_loss(y_true, y_pred):
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return 1-(2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+
+#%% One Pass of iterative training simulation
+from keras.preprocessing.image import ImageDataGenerator
+def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2):
+    # split off validation data
+    numIm = cur_inputs.shape[0]
+    val_inds = np.random.choice(np.arange(numIm),
+                                np.round(val_frac*numIm).astype(np.int),
+                                replace=False)
+    valX = np.take(cur_inputs,val_inds,axis=0)
+    valY = np.take(cur_targets,val_inds, axis=0)
+    trainX = np.delete(cur_inputs, val_inds, axis=0)
+    trainY = np.delete(cur_targets, val_inds, axis=0)
+    
+    
+    # setup image data generator
+    datagen1 = ImageDataGenerator(
+        rotation_range=15,
+        shear_range=0.5,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        vertical_flip=True,
+        fill_mode='nearest')
+    datagen2 = ImageDataGenerator(
+        rotation_range=15,
+        shear_range=0.5,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        vertical_flip=True,
+        fill_mode='nearest')
+     
+    # Provide the same seed and keyword arguments to the fit and flow methods
+    seed = 1
+    datagen1.fit(trainX, seed=seed)
+    datagen2.fit(trainY, seed=seed)
+    batchsize = 16
+    datagen = zip( datagen1.flow( trainX, None, batchsize, seed=seed), datagen2.flow( trainY, None, batchsize, seed=seed) )
+    
+    # calculate number of epochs and batches
+    # numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
+    numEp = 30
+    steps = np.minimum(np.int(trainX.shape[0]/batchsize*16),200)
+    
+    model.fit_generator(datagen,
+                        steps_per_epoch=steps,
+                        epochs=numEp,
+                        callbacks=CBs,
+                        verbose=2,
+                        validation_data=(valX,valY))
+    return model
+#%% Plot ItATMIS simulation results
+from matplotlib import pyplot as plt
+from glob import glob
+def PlotResults(anatomy):
+    txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*'.format(anatomy)
+    result_files = glob(txt_path)
+    
+    scores = [np.loadtxt(f) for f in result_files]
+    iters = [range(1,s.shape[0]+1) for s in scores]
+    
+    plt.figure()
+    for it in range(len(scores)):
+        plt.plot(iters[it],scores[it],'-o')
+        plt.title('Dice Score over Iterations')
+        plt.xlabel('Number of subjects')
+        plt.ylabel('Dice')
