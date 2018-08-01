@@ -192,6 +192,7 @@ def PlotResults(anatomy,scatter=False):
         plt.title('Dice Score over Iterations')
         plt.xlabel('Number of subjects')
         plt.ylabel('Dice')
+    plt.ylim([0,1])
 #%% Plot ItATMIS results as error bars
 def PlotErrorResults(anatomy):
     txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
@@ -207,3 +208,4 @@ def PlotErrorResults(anatomy):
     plt.xlabel('Number of subjects')
     plt.ylabel('Dice')
     plt.legend()
+    plt.ylim([0,1])

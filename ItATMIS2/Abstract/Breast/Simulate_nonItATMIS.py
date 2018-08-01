@@ -37,10 +37,10 @@ import warnings
 warnings.filterwarnings("ignore")
 #%% Parameters
 data_dir = '/data/jmj136/ItATMIS/Breast'
-model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Breast/best_model_weights.h5'
+model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Breast/best_model_weights2.h5'
 val_frac = 0.2
 num_CV_folds = 30
-maxIters = 20
+train_groups = [5,10,15,20]
 
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
 #%% Load data
@@ -81,9 +81,7 @@ for it in range(num_CV_folds):
     
     # list for collecting losses
     CV_losses = []
-    # maximim iterations
-    maxIter = np.minimum(len(train_inputs),maxIters)
-    for cur_num_subj in range(1,maxIter+1):
+    for cur_num_subj in train_groups:
         cur_inputs = np.concatenate(train_inputs[:cur_num_subj])
         cur_targets = np.concatenate(train_targets[:cur_num_subj])[...,np.newaxis]
         # make callbacks
@@ -107,7 +105,7 @@ for it in range(num_CV_folds):
     
     # save results
     print('Cross validation fold complete. Saving results...')
-    results_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV{}.txt'.format('breast',it+1)
+    results_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV{}.txt'.format('breast',it+1)
     np.savetxt(results_path,np.array(CV_losses))
 
 # plot score results
