@@ -9,14 +9,17 @@ import sys
 sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
 sys.path.insert(1,'/home/jmj136/deep-learning/ItATMIS2')
 import numpy as np
+np.random.seed(seed=1)
 from glob import glob
 from scipy import io
 from time import time
 from natsort import natsorted
 from keras.callbacks import ModelCheckpoint,EarlyStopping
-from ItATMISfunctions import BlockModel, dice_coef_loss, SimulateItATMIS, PlotResults
+from ItATMISfunctions import BlockModel, dice_coef_loss
+from ItATMISfunctions import SimulateItATMIS, PlotResults, PlotErrorResults
 from keras.optimizers import Adam
 import random
+random.seed(1)
 # Use first available GPU
 import os
 import GPUtil
@@ -36,9 +39,8 @@ warnings.filterwarnings("ignore")
 data_dir = '/data/jmj136/ItATMIS/Breast'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Breast/best_model_weights.h5'
 val_frac = 0.2
-cross_val_num = 1
-num_CV_folds = 30
-maxIters = 20
+num_CV_folds = 2
+maxIters = 5
 
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
 #%% Load data
@@ -50,20 +52,28 @@ for subj in subjs:
     mat = io.loadmat(files[subj])    
     inputs.append(mat['InputArray'])
     targets.append(mat['TargetArray'][...,0])
+    
+#%% Split into cross validation folds
+import more_itertools as mit
+iterable = range(1, 118)
+input_folds = [list(c) for c in mit.divide(num_CV_folds, inputs)]
+target_folds = [list(c) for c in mit.divide(num_CV_folds, targets)]
 
 #%% Iterate for each cross-validation
-    
-for it in range(maxIters):
+for it in range(num_CV_folds):
     # make model
     model = BlockModel(inputs[0].shape,filt_num=16,numBlocks=4,num_out_channels=1)
     model.compile(optimizer=Adam(), loss=dice_coef_loss)
     
-    # split off cross-validation subjects
-    cv_subjs = random.sample(subjs,cross_val_num)
-    cv_inputs = np.concatenate([i for j, i in enumerate(inputs) if j in cv_subjs])
-    cv_targets = np.concatenate([i for j, i in enumerate(targets) if j in cv_subjs])[...,np.newaxis]
-    train_inputs = [i for j, i in enumerate(inputs) if j not in cv_subjs]
-    train_targets = [i for j, i in enumerate(targets) if j not in cv_subjs]
+    # split off cross-validation subjects    
+    cv_inputs = np.concatenate(input_folds[it])
+    cv_targets = np.concatenate(target_folds[it])[...,np.newaxis]
+    
+    # join together rest of subjects    
+    train_inputs = [i for j, i in enumerate(input_folds) if j not in [it]]
+    train_inputs = [j for i in train_inputs for j in i]
+    train_targets = [i for j, i in enumerate(target_folds) if j not in [it]]
+    train_targets = [j for i in train_targets for j in i]
     
     combined = list(zip(train_inputs, train_targets))
     random.shuffle(combined)
@@ -97,10 +107,11 @@ for it in range(maxIters):
     
     # save results
     print('Cross validation fold complete. Saving results...')
-    results_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV{}.txt'.format('breast',''.join(map(str,cv_subjs)))
+    results_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV{}.txt'.format('breast',it+1)
     np.savetxt(results_path,np.array(CV_losses))
 
 # plot score results
 print('All cross-validation folds complete!')
 print('Displaying results')
 PlotResults('breast')
+PlotErrorResults('breast')
