@@ -162,10 +162,21 @@ def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2):
                         verbose=0,
                         validation_data=(valX,valY))
     return model
+#%% Calculate Confidence Interval
+import scipy as sp
+import scipy.stats
+
+def Calc_Error(data, confidence=0.95):
+    a = 1.0*np.array(data)
+    n = len(a)
+    m, se = np.mean(a,axis=0), scipy.stats.sem(a)
+    h = se * sp.stats.t._ppf((1+confidence)/2., n-1)
+    return m,h
+
 #%% Plot ItATMIS simulation results
 from matplotlib import pyplot as plt
 from glob import glob
-def PlotResults(anatomy):
+def PlotResults(anatomy,scatter=False):
     txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
     result_files = glob(txt_path)
     
@@ -174,7 +185,25 @@ def PlotResults(anatomy):
     
     plt.figure()
     for it in range(len(scores)):
-        plt.plot(iters[it],scores[it],'-o')
+        if scatter:
+            plt.scatter(iters[it],scores[it])
+        else:
+            plt.plot(iters[it],scores[it],'-o')
         plt.title('Dice Score over Iterations')
         plt.xlabel('Number of subjects')
         plt.ylabel('Dice')
+#%% Plot ItATMIS results as error bars
+def PlotErrorResults(anatomy):
+    txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
+    result_files = glob(txt_path)
+    
+    scores = np.stack([np.loadtxt(f) for f in result_files])
+    iters = range(1,scores.shape[1]+1)
+    m,err = Calc_Error(scores,confidence=.95)
+    
+    plt.figure()
+    plt.errorbar(iters, m, yerr=err, fmt='o',markersize=3,label='ItATMIS')
+    plt.title('Dice Score over Iterations')
+    plt.xlabel('Number of subjects')
+    plt.ylabel('Dice')
+    plt.legend()
