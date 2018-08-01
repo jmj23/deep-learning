@@ -16,7 +16,7 @@ from time import time
 from natsort import natsorted
 from keras.callbacks import ModelCheckpoint,EarlyStopping
 from ItATMISfunctions import BlockModel, dice_coef_loss
-from ItATMISfunctions import SimulateItATMIS, PlotResults, PlotErrorResults
+from ItATMISfunctions import SimulateItATMIS, Calc_Error
 from keras.optimizers import Adam
 import random
 random.seed(1)
@@ -111,5 +111,20 @@ for it in range(num_CV_folds):
 # plot score results
 print('All cross-validation folds complete!')
 print('Displaying results')
-PlotResults('breast')
-PlotErrorResults('breast')
+
+# get all CV result files
+txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV*.txt'.format('breast')
+result_files = glob(txt_path)
+# load and calculate confidence interval
+scores = np.stack([np.loadtxt(f) for f in result_files])
+m,err = Calc_Error(scores,confidence=.95)
+
+# plot
+from matplotlib import pyplot as plt
+plt.figure()
+plt.errorbar(train_groups, m, yerr=err, fmt='o',markersize=3,label='ItATMIS')
+plt.title('Dice Score over Iterations')
+plt.xlabel('Number of subjects')
+plt.ylabel('Dice')
+plt.legend()
+plt.ylim([0,1])
