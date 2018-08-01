@@ -16,7 +16,7 @@ from time import time
 from natsort import natsorted
 from keras.callbacks import ModelCheckpoint,EarlyStopping
 from ItATMISfunctions import BlockModel, dice_coef_loss
-from ItATMISfunctions import SimulateItATMIS, Calc_Error
+from ItATMISfunctions import SimulateItATMIS
 from keras.optimizers import Adam
 import random
 random.seed(1)
@@ -36,7 +36,7 @@ except RuntimeError as e:
 import warnings
 warnings.filterwarnings("ignore")
 #%% Parameters
-data_dir = '/data/jmj136/ItATMIS/Breast'
+data_dir = '/home/jmj136/Data/ItATMIS/Breast'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Breast/best_model_weights2.h5'
 val_frac = 0.2
 num_CV_folds = 30
@@ -117,6 +117,7 @@ txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimR
 result_files = glob(txt_path)
 # load and calculate confidence interval
 scores = np.stack([np.loadtxt(f) for f in result_files])
+from ItATMISfunctions import Calc_Error
 m,err = Calc_Error(scores,confidence=.95)
 
 # plot
