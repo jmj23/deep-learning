@@ -310,3 +310,39 @@ def GetLCTSCdata(directory):
         targets[i] = resize(mask,(256,256))   
         
     return inputs,targets
+
+#%% Cardiac MRI Data getter
+from scipy import io
+def GetCardiacData(image_file,contour_file):
+    mat = io.loadmat(image_file)
+    image_data = mat['sol_yxzt']
+    images = np.rollaxis(np.rollaxis(image_data,3,0),3,1).astype(np.float)
+    mask = np.zeros_like(images)
+    
+    mat = io.loadmat(contour_file)
+    contour_data = mat['manual_seg_32points']
+    
+    ts,zs,_,_ = images.shape
+    for t in range(ts):
+        for z in range(zs):
+            im = images[t,z,...]
+            contour = contour_data[z,t]
+            if contour[0,0] != -99999:
+                numP = int((contour.shape[0]-1)/2)
+                endo = contour[:numP,:]
+                epi = contour[numP+1:,:]
+                
+                rr, cc = polygon(epi[:,0], epi[:,1])
+                mask[t,z,cc, rr] = 1
+                rr, cc = polygon(endo[:,0], endo[:,1])
+                mask[t,z,cc, rr] = 0
+    
+    for imvol in images:
+        for im in imvol:
+            im -= np.min(im)
+            im /= np.max(im)
+            
+    inputs = np.reshape(images,(-1,256,256))[...,np.newaxis]
+    targets = np.reshape(mask,(-1,256,256))[...,np.newaxis]
+    return inputs,targets
+    
