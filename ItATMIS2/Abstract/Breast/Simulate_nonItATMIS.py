@@ -115,17 +115,31 @@ print('Displaying results')
 # get all CV result files
 txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV*.txt'.format('breast')
 result_files = glob(txt_path)
-# load and calculate confidence interval
-scores = np.stack([np.loadtxt(f) for f in result_files])
-from ItATMISfunctions import Calc_Error
-m,err = Calc_Error(scores,confidence=.95)
 
-# plot
+# get scores
+scores = [np.loadtxt(f) for f in result_files]
+
 from matplotlib import pyplot as plt
 plt.figure()
-plt.errorbar(train_groups, m, yerr=err, fmt='o',markersize=3,label='ItATMIS')
+for it in range(len(scores)):
+    plt.plot(train_groups,scores[it],'-o')
+    plt.title('Dice Score over Iterations')
+    plt.xlabel('Number of subjects')
+    plt.ylabel('Dice')
+plt.ylim([0.5,1])
+
+
+# load and calculate confidence interval
+score_array = np.stack([np.loadtxt(f) for f in result_files])
+from ItATMISfunctions import Calc_Error
+m,err = Calc_Error(score_array,confidence=.95)
+
+# plot with error bars
+plt.figure()
+plt.errorbar(train_groups, m, yerr=err, fmt='o',markersize=3,label='nonItATMIS')
 plt.title('Dice Score over Iterations')
 plt.xlabel('Number of subjects')
 plt.ylabel('Dice')
 plt.legend()
-plt.ylim([0,1])
+plt.ylim([0.5,1])
+plt.xticks(train_groups)
