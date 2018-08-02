@@ -209,7 +209,40 @@ def PlotErrorResults(anatomy):
     plt.ylabel('Dice')
     plt.legend()
     plt.ylim([0,1])
+#%% Plot both ItATMIS and NonItATMIS results
+def PlotComparison(anatomy,plot_error=True):
+    # Get files
+    itatmis_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
+    non_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
+    it_result_files = glob(itatmis_path)
+    non_result_files = glob(non_path)
+    # get itatmis scores
+    it_scores = np.stack([np.loadtxt(f) for f in it_result_files])
+    it_x = range(1,it_scores.shape[1]+1)
+    # get non-itatmis scores
+    non_scores = np.stack([np.loadtxt(f) for f in non_result_files])
+    non_x = [5,10,15,20]
     
+    if plot_error:
+        # Calculate error
+        it_m,it_err = Calc_Error(it_scores,confidence=.95)
+        non_m,non_err = Calc_Error(non_scores,confidence=.95)
+        # plot
+        plt.figure()
+        plt.errorbar(it_x, it_m, yerr=it_err, fmt='ro',markersize=3,label='ItATMIS')
+        plt.errorbar(non_x, non_m, yerr=non_err, fmt='bo',markersize=3,label='NonItATMIS')
+    else:
+        plt.figure()
+        for s in non_scores:
+            plt.plot(non_x,s,'b-o',label='NonItATMIS')
+        for s in it_scores:
+            plt.plot(it_x,s,'r-o',label='ItATMIS')    
+    plt.title('Dice Score over Iterations')
+    plt.xlabel('Number of subjects')
+    plt.ylabel('Dice')
+    plt.legend()
+    plt.ylim([0.25,1])
+
 #%% LCTSC data getter
 import os
 from skimage.draw import polygon
