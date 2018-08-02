@@ -209,39 +209,100 @@ def PlotErrorResults(anatomy):
     plt.ylabel('Dice')
     plt.legend()
     plt.ylim([0,1])
+#%% Box and whisker plot
+def PlotBoxPlot(anatomy,version=1):
+    if version==2:
+        vs = 'NonItATMIS'
+    else:
+        vs = 'ItATMIS'
+    txt_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/{}_SimResults_{}_CV*.txt'.format(vs,anatomy)
+    result_files = glob(txt_path)
+    
+    scores = np.stack([np.loadtxt(f) for f in result_files],axis=1)
+    if version==2:
+        iters = [5,10,15,20]
+    else:
+        iters = range(1,scores.shape[0]+1)
+    score_list = [s for s in scores]
+    
+    # Create a figure instance
+    fig = plt.figure(None, figsize=(9, 6))
+    
+    # Create an axes instance
+    ax = fig.add_subplot(111)
+    
+    # Create the boxplot
+    ax.boxplot(score_list,
+               positions=iters,
+               patch_artist=True)
+    
+    plt.title('Dice Score over Iterations')
+    plt.xlabel('Number of subjects')
+    plt.ylabel('Dice')
+    plt.legend([vs])
+    plt.xlim([0,21])
+    plt.ylim([0.25,1])
+    
+    # Save the figure
+    fig.savefig('/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/Comparison_{}.png'.format(anatomy), bbox_inches='tight')
+    
 #%% Plot both ItATMIS and NonItATMIS results
-def PlotComparison(anatomy,plot_error=True):
+def PlotComparison(anatomy,box_plot=True):
     # Get files
     itatmis_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
     non_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
     it_result_files = glob(itatmis_path)
     non_result_files = glob(non_path)
-    # get itatmis scores
-    it_scores = np.stack([np.loadtxt(f) for f in it_result_files])
-    it_x = range(1,it_scores.shape[1]+1)
-    # get non-itatmis scores
-    non_scores = np.stack([np.loadtxt(f) for f in non_result_files])
-    non_x = [5,10,15,20]
     
-    if plot_error:
-        # Calculate error
-        it_m,it_err = Calc_Error(it_scores,confidence=.95)
-        non_m,non_err = Calc_Error(non_scores,confidence=.95)
-        # plot
-        plt.figure()
-        plt.errorbar(it_x, it_m, yerr=it_err, fmt='ro',markersize=3,label='ItATMIS')
-        plt.errorbar(non_x, non_m, yerr=non_err, fmt='bo',markersize=3,label='NonItATMIS')
+    # Create a figure instance
+    fig = plt.figure(1, figsize=(9, 6))
+    # Create an axes instance
+    ax = fig.add_subplot(111)
+    
+    if box_plot:
+        # get itatmis scores
+        it_scores = np.stack([np.loadtxt(f) for f in it_result_files],axis=1)
+        it_score_list = [s for s in it_scores]
+        it_x = range(1,it_scores.shape[0]+1)
+        # get non-itatmis scores
+        non_scores = np.stack([np.loadtxt(f) for f in non_result_files],axis=1)
+        non_score_list = [s for s in non_scores]
+        non_x = [5,10,15,20]
+        # Create the boxplots
+        it_bp = ax.boxplot(it_score_list,
+                           positions=it_x,
+                           patch_artist=True)
+        ## change outline color, fill color and linewidth of the boxes
+        for box in it_bp['boxes']:
+            # change outline color
+            box.set( color='#7570b3', linewidth=2)
+            # change fill color
+            box.set( facecolor = '#1b9e77' )
+        non_bp = ax.boxplot(non_score_list,
+                            positions=non_x,
+                            patch_artist=True)
     else:
-        plt.figure()
-        for s in non_scores:
-            plt.plot(non_x,s,'b-o',label='NonItATMIS')
+        # get itatmis scores
+        it_scores = np.stack([np.loadtxt(f) for f in it_result_files])
+        it_x = range(1,it_scores.shape[1]+1)
+        # get non-itatmis scores
+        non_scores = np.stack([np.loadtxt(f) for f in non_result_files])
+        non_x = [5,10,15,20]
         for s in it_scores:
-            plt.plot(it_x,s,'r-o',label='ItATMIS')    
+            ax.plot(it_x,s,'r-o',label='ItATMIS')
+        for s in non_scores:
+            ax.plot(non_x,s,'b-o',label='NonItATMIS')
+        plt.ylim([0.25,1])
+        
     plt.title('Dice Score over Iterations')
     plt.xlabel('Number of subjects')
     plt.ylabel('Dice')
-    plt.legend()
-    plt.ylim([0.25,1])
+    plt.legend(['ItATMIS','NonItATMIS'])
+    plt.ylim([.25,1])
+    plt.xlim([0,21])
+    
+    if box_plot:
+        fig.savefig('/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/Comparison_{}.png'.format(anatomy), bbox_inches='tight')
 
 #%% LCTSC data getter
 import os
