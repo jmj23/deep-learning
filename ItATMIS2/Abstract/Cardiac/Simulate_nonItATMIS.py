@@ -81,8 +81,7 @@ for it in range(num_CV_folds):
     
     # list for collecting losses
     CV_losses = []
-    # maximim iterations
-    maxIter = np.minimum(len(train_inputs),maxIters)
+    # loop over subject groups
     for cur_num_subj in train_groups:
         cur_inputs = np.concatenate(train_inputs[:cur_num_subj])
         cur_targets = np.concatenate(train_targets[:cur_num_subj])
