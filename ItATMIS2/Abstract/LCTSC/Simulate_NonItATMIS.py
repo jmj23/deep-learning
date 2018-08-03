@@ -34,10 +34,10 @@ except RuntimeError as e:
 import warnings
 warnings.filterwarnings("ignore")
 #%% Parameters
-data_dir = '/data/jmj136/ItATMIS/LCTSC'
+data_dir = '/home/jmj136/Data/ItATMIS/LCTSC'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/LCTSC/best_model_weights2.h5'
 val_frac = 0.2
-num_CV_folds = 30
+num_CV_folds = 20
 train_groups = [5,10,15,20]
 
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
