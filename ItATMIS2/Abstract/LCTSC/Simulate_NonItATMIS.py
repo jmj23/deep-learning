@@ -43,7 +43,7 @@ train_groups = [5,10,15,20]
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
 #%% Load data
 # Now we'll get all the subject directories using glob
-subj_dirs = glob.glob(os.path.join(data_dir,'LCTSC*'))
+subj_dirs = glob(os.path.join(data_dir,'LCTSC*'))
 # and feed those directories into another function that loads
 # the dicoms and masks for each
 data = [GetLCTSCdata(d) for d in subj_dirs]
