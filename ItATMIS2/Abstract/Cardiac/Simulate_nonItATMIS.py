@@ -60,10 +60,6 @@ target_folds = [list(c) for c in mit.divide(num_CV_folds, targets)]
 
 #%% Iterate for each cross-validation
 for it in range(num_CV_folds):
-    # make model
-    model = BlockModel(inputs[0].shape,filt_num=16,numBlocks=4,num_out_channels=1)
-    model.compile(optimizer=Adam(), loss=dice_coef_loss)
-    
     # split off cross-validation subjects    
     cv_inputs = np.concatenate(input_folds[it])
     cv_targets = np.concatenate(target_folds[it])
@@ -83,6 +79,11 @@ for it in range(num_CV_folds):
     CV_losses = []
     # loop over subject groups
     for cur_num_subj in train_groups:
+	# make model
+   	model = BlockModel(inputs[0].shape,filt_num=16,numBlocks=4,num_out_channels=1)
+   	model.compile(optimizer=Adam(), loss=dice_coef_loss)
+
+	# Concatenate current subjects
         cur_inputs = np.concatenate(train_inputs[:cur_num_subj])
         cur_targets = np.concatenate(train_targets[:cur_num_subj])
         # make callbacks
