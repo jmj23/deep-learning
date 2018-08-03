@@ -37,13 +37,13 @@ warnings.filterwarnings("ignore")
 data_dir = '/home//jmj136/Data/ItATMIS/LCTSC'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/LCTSC/best_model_weights.h5'
 val_frac = 0.2
-num_CV_folds = 20
+num_CV_folds = 10
 maxIters = 20
 
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
 #%% Load data
 # Now we'll get all the subject directories using glob
-subj_dirs = glob(os.path.join(data_dir,'LCTSC*'))
+subj_dirs = glob(os.path.join(data_dir,'LCTSC-Train*'))
 # and feed those directories into another function that loads
 # the dicoms and masks for each
 data = [GetLCTSCdata(d) for d in subj_dirs]
@@ -66,7 +66,7 @@ for it in range(num_CV_folds):
     model.compile(optimizer=Adam(), loss=dice_coef_loss)
     
     # split off cross-validation subjects    
-    cv_inputs = np.concatenate(input_folds[it])
+    cv_inputs = np.concatenate(input_folds[it])[...,np.newaxis]
     cv_targets = np.concatenate(target_folds[it])[...,np.newaxis]
     
     # join together rest of subjects    
@@ -85,7 +85,7 @@ for it in range(num_CV_folds):
     # maximim iterations
     maxIter = np.minimum(len(train_inputs),maxIters)
     for cur_num_subj in range(1,maxIter+1):
-        cur_inputs = np.concatenate(train_inputs[:cur_num_subj])
+        cur_inputs = np.concatenate(train_inputs[:cur_num_subj])[...,np.newaxis]
         cur_targets = np.concatenate(train_targets[:cur_num_subj])[...,np.newaxis]
         # make callbacks
         cb_check = ModelCheckpoint(model_weights_path,monitor='val_loss',
