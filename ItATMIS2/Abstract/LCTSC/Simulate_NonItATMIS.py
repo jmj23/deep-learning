@@ -37,13 +37,14 @@ warnings.filterwarnings("ignore")
 data_dir = '/home/jmj136/Data/ItATMIS/LCTSC'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/LCTSC/best_model_weights2.h5'
 val_frac = 0.2
-num_CV_folds = 30
+num_CV_folds = 10
 train_groups = [5,10,15,20]
 
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
 #%% Load data
+print('Loading data...')
 # Now we'll get all the subject directories using glob
-subj_dirs = glob(os.path.join(data_dir,'LCTSC*'))
+subj_dirs = glob(os.path.join(data_dir,'LCTSC-Train*'))
 # and feed those directories into another function that loads
 # the dicoms and masks for each
 data = [GetLCTSCdata(d) for d in subj_dirs]
@@ -63,7 +64,7 @@ target_folds = [list(c) for c in mit.divide(num_CV_folds, targets)]
 for it in range(num_CV_folds):
     # split off cross-validation subjects    
     cv_inputs = np.concatenate(input_folds[it])
-    cv_targets = np.concatenate(target_folds[it])[...,np.newaxis]
+    cv_targets = np.concatenate(target_folds[it])
     
     # join together rest of subjects    
     train_inputs = [i for j, i in enumerate(input_folds) if j not in [it]]
@@ -81,7 +82,7 @@ for it in range(num_CV_folds):
     for cur_num_subj in train_groups:
         # concatenate current data
         cur_inputs = np.concatenate(train_inputs[:cur_num_subj])
-        cur_targets = np.concatenate(train_targets[:cur_num_subj])[...,np.newaxis]
+        cur_targets = np.concatenate(train_targets[:cur_num_subj])
         # make model
         model = BlockModel(inputs[0].shape,filt_num=16,numBlocks=4,num_out_channels=1)
         model.compile(optimizer=Adam(), loss=dice_coef_loss)
