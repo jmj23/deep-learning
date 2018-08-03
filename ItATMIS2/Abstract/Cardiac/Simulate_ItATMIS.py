@@ -39,7 +39,7 @@ warnings.filterwarnings("ignore")
 data_dir = '/home/jmj136/Data/ItATMIS/Cardiac'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Cardiac/best_model_weights.h5'
 val_frac = 0.2
-num_CV_folds = 30
+num_CV_folds = 10
 maxIters = 20
 
 cb_eStop = EarlyStopping(monitor='val_loss',patience=3,verbose=1,mode='auto')
