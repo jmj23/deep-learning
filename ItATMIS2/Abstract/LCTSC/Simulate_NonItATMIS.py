@@ -34,7 +34,7 @@ except RuntimeError as e:
 import warnings
 warnings.filterwarnings("ignore")
 #%% Parameters
-data_dir = '/data/jmj136/ItATMIS/LCTSC'
+data_dir = '/home/jmj136/Data/ItATMIS/LCTSC'
 model_weights_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/LCTSC/best_model_weights2.h5'
 val_frac = 0.2
 num_CV_folds = 30

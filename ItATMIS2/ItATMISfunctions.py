@@ -291,11 +291,11 @@ import pydicom
 from skimage.transform import resize
 
 def GetLCTSCdata(directory):
-    cur_dir = glob.glob(os.path.join(directory, "*", ""))[0]
-    dcm_dir = glob.glob(os.path.join(cur_dir, "0*", ""))[0]
-    lbl_dir = glob.glob(os.path.join(cur_dir, "1*", ""))[0]
-    dicom_files = glob.glob(os.path.join(dcm_dir, "*.dcm"))
-    lbl_file = glob.glob(os.path.join(lbl_dir,"*.dcm"))[0]
+    cur_dir = glob(os.path.join(directory, "*", ""))[0]
+    dcm_dir = glob(os.path.join(cur_dir, "0*", ""))[0]
+    lbl_dir = glob(os.path.join(cur_dir, "1*", ""))[0]
+    dicom_files = glob(os.path.join(dcm_dir, "*.dcm"))
+    lbl_file = glob(os.path.join(lbl_dir,"*.dcm"))[0]
     dicms = [pydicom.read_file(fn) for fn in dicom_files]
     dicms.sort(key = lambda x: float(x.ImagePositionPatient[2]))
     ims = np.stack([dcm.pixel_array.astype(np.float) for dcm in dicms])
