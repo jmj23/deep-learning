@@ -289,11 +289,13 @@ import os
 from skimage.draw import polygon
 import pydicom
 from skimage.transform import resize
+from natsort import natsorted
 
 def GetLCTSCdata(directory):
     cur_dir = glob(os.path.join(directory, "*", ""))[0]
-    dcm_dir = glob(os.path.join(cur_dir, "0*", ""))[0]
-    lbl_dir = glob(os.path.join(cur_dir, "1*", ""))[0]
+    sub_dirs = natsorted(glob(os.path.join(cur_dir, "*", "")))
+    dcm_dir = [d for d in sub_dirs if not 'simplified' in d][0]
+    lbl_dir = [d for d in sub_dirs if 'simplified' in d][0]
     dicom_files = glob(os.path.join(dcm_dir, "*.dcm"))
     lbl_file = glob(os.path.join(lbl_dir,"*.dcm"))[0]
     dicms = [pydicom.read_file(fn) for fn in dicom_files]
@@ -308,7 +310,7 @@ def GetLCTSCdata(directory):
     inputs = np.zeros((ims.shape[0],256,256))
     # iterate over all the input images and resize
     for i,im in enumerate(ims):
-        inputs[i] = resize(ims,(256,256))
+        inputs[i] = resize(im,(256,256))
         
     # get labels
     label = pydicom.read_file(lbl_file)
@@ -348,7 +350,7 @@ def GetLCTSCdata(directory):
     targets = np.zeros((mask.shape[0],256,256))
     # iterate over all the target images and resize
     for i,im in enumerate(mask):
-        targets[i] = resize(mask,(256,256))   
+        targets[i] = resize(im,(256,256))   
         
     return inputs,targets
 
