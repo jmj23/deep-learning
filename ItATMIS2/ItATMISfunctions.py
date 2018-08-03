@@ -293,14 +293,9 @@ from natsort import natsorted
 
 def GetLCTSCdata(directory):
     cur_dir = glob(os.path.join(directory, "*", ""))[0]
-<<<<<<< HEAD
-    dcm_dir = glob(os.path.join(cur_dir, "0*", ""))[0]
-    lbl_dir = glob(os.path.join(cur_dir, "1*", ""))[0]
-=======
     sub_dirs = natsorted(glob(os.path.join(cur_dir, "*", "")))
     dcm_dir = [d for d in sub_dirs if not 'simplified' in d][0]
     lbl_dir = [d for d in sub_dirs if 'simplified' in d][0]
->>>>>>> 1e27d29159d861b5f658a49b10f754e5dd142c84
     dicom_files = glob(os.path.join(dcm_dir, "*.dcm"))
     lbl_file = glob(os.path.join(lbl_dir,"*.dcm"))[0]
     dicms = [pydicom.read_file(fn) for fn in dicom_files]
