@@ -352,7 +352,7 @@ def GetLCTSCdata(directory):
     for i,im in enumerate(mask):
         targets[i] = resize(im,(256,256))   
         
-    return inputs,targets
+    return inputs[...,np.newaxis],targets[...,np.newaxis]
 
 #%% Cardiac MRI Data getter
 from scipy import io
