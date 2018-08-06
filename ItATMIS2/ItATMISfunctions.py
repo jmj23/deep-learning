@@ -275,7 +275,7 @@ def PlotComparison(anatomy):
     ax.scatter(it_x.flatten(),it_scores.flatten(),c='r',label='ItATMIS')
     ax.scatter(non_x.flatten(),non_scores.flatten(),c='b',label='NonItATMIS')
         
-    plt.title('Dice Score over Iterations')
+    plt.title('Dice Score over Iterations for {} Task'.format(anatomy))
     plt.xlabel('Number of subjects')
     plt.ylabel('Dice')
     plt.legend()
