@@ -24,6 +24,45 @@ def showmask(im,mask):
     plt.imshow(msk)
     plt.axes = 'off'
     plt.show()
+#%%
+def DisplayDifferenceMask(im,mask1,mask2,name='Difference Mask',savepath=None):
+    # adjust masks to binary
+    mask1 = (mask1>.5)
+    mask2 = (mask2>.5)
+    
+    # create mask array
+    msksiz = np.r_[mask1.shape,4]
+    msk = np.zeros(msksiz,dtype=float)
+    # calculate mask overlaps
+    mask_union = mask1 | mask2
+    mask_intersect = mask1 & mask2
+    mask1_only = mask1 & ~mask2
+    mask2_only = mask2 & ~mask1
+    
+    # create different colors for overlaps
+    msk[mask_intersect,0] = .2
+    msk[mask_intersect,1] = .8
+    msk[mask_intersect,2] = .2
+    
+    msk[mask1_only,0] = 1
+    msk[mask1_only,1] = 1
+    
+    msk[mask2_only,1] = .7
+    msk[mask2_only,2] = 1
+    
+    msk[...,3] = .3*mask_union.astype(float)
+    
+    fig = plt.figure(figsize=(8,8))
+    fig.index = 0
+    plt.imshow(im,cmap='gray',aspect='equal',vmin=0, vmax=np.max(im))
+    plt.imshow(msk)
+    plt.tight_layout()
+    plt.suptitle(name)
+    ax = fig.axes[0]
+    ax.set_axis_off()
+    plt.show()
+    if savepath is not None:
+        fig.savefig(savepath, bbox_inches='tight')
     
 #%%
 def multi_slice_viewer0(volume,title='',labels=[], vrange=[0,1]):
@@ -261,17 +300,46 @@ def YOLOviewer(im,target,conf=.5):
     for rect in rects:
         ax.add_patch(rect)
 #%%
-def mask_viewer0(imvol,maskvol,name='Mask Display'):
-    msksiz = np.r_[maskvol.shape,4]
-    msk = np.zeros(msksiz,dtype=float)
-    msk[...,0] = 1
-    msk[...,1] = 1
-    msk[...,3] = .3*maskvol.astype(float)
+def mask_viewer0(imvol,maskvol,maskvol2=None,name='Mask Display'):
+    if maskvol2 is None:
+        # display single mask
+        msksiz = np.r_[maskvol.shape,4]
+        msk = np.zeros(msksiz,dtype=float)
+        msk[...,0] = 1
+        msk[...,1] = 1
+        msk[...,3] = .3*maskvol.astype(float)
+    else:
+        assert maskvol2.shape==maskvol.shape
+        # mask different mask
+        # adjust masks to binary
+        maskvol1 = (maskvol>.5)
+        maskvol2 = (maskvol2>.5)
+        
+        # create mask array
+        msksiz = np.r_[maskvol1.shape,4]
+        msk = np.zeros(msksiz,dtype=float)
+        # calculate mask overlaps
+        mask_union = maskvol1 | maskvol2
+        mask_intersect = maskvol1 & maskvol2
+        mask1_only = maskvol1 & ~maskvol2
+        mask2_only = maskvol2 & ~maskvol1
+        # create different colors for overlaps
+        # mask 1 only shows up yellow
+        # mask 2 only shows up light blue
+        # mask overlap shows up green
+        msk[mask_intersect,0] = .2
+        msk[mask_intersect,1] = .8
+        msk[mask_intersect,2] = .2
+        msk[mask1_only,0] = 1
+        msk[mask1_only,1] = 1        
+        msk[mask2_only,1] = .7
+        msk[mask2_only,2] = 1
+        msk[...,3] = .3*mask_union.astype(float)
     
     imvol -= np.min(imvol)
     imvol /= np.max(imvol)
     
-    fig = plt.figure(figsize=(5,5))
+    fig = plt.figure(figsize=(6,6))
     fig.index = 0
     imobj = plt.imshow(imvol[fig.index,...],cmap='gray',aspect='equal',vmin=0, vmax=1)
     mskobj = plt.imshow(msk[fig.index,...])
