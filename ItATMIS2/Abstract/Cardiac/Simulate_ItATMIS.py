@@ -11,12 +11,11 @@ sys.path.insert(1,'/home/jmj136/deep-learning/ItATMIS2')
 import numpy as np
 np.random.seed(seed=1)
 from glob import glob
-from scipy import io
 from time import time
 from natsort import natsorted
 from keras.callbacks import ModelCheckpoint,EarlyStopping
 from ItATMISfunctions import BlockModel, dice_coef_loss, GetCardiacData
-from ItATMISfunctions import SimulateItATMIS, PlotResults, PlotErrorResults
+from ItATMISfunctions import SimulateItATMIS, PlotResults
 from keras.optimizers import Adam
 import random
 random.seed(1)
@@ -95,7 +94,7 @@ for it in range(num_CV_folds):
         print('---------------------------------------')
         print('Including {} subjects on CV fold {}...'.format(cur_num_subj,it+1))
         time1 = time()
-        model = SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac)
+        model = SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac,augment=True)
         time2 = time()
         print('Training complete')
         print('Time elapsed: {:0.2f} s'.format(time2-time1))
@@ -112,6 +111,3 @@ for it in range(num_CV_folds):
 
 # plot score results
 print('All cross-validation folds complete!')
-print('Displaying results')
-PlotResults('Cardiac')
-PlotErrorResults('Cardiac')
