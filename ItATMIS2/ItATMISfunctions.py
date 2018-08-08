@@ -398,7 +398,7 @@ def GetCardiacData(image_file,contour_file):
     
 #%% Plot both ItATMIS and NonItATMIS results
 from scipy import stats
-def CalculatePvalue(anatomy):
+def CalculatePvalue(anatomy,stat='Pval'):
     # Get files
     itatmis_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
     non_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
@@ -416,7 +416,16 @@ def CalculatePvalue(anatomy):
     # get itatmis scores that correspond to non-itatmis scores
     it_scores_match = it_scores[:,non_x-1]
     
-    # calculate stats at each subject number
+    # calculate p-vals at each subject number
     _,pvals = stats.ttest_rel(non_scores,it_scores_match,axis=0)
-    return pvals
+    
+    # calculate mean values
+    it_means = np.mean(it_scores_match,axis=0)
+    non_means = np.mean(non_scores,axis=0)
+    if stat=='Mean':
+        return it_means,non_means
+    elif stat == 'Pval':
+        return pvals
+    else:
+        raise('Unknown stat type')
     
