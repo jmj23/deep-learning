@@ -261,7 +261,7 @@ def PlotComparison(anatomy):
     non_result_files = glob(non_path)
     
     # Create a figure instance
-    fig = plt.figure(None, figsize=(9, 3))
+    fig = plt.figure(None, figsize=(9, 4))
     # Create an axes instance
     ax = fig.add_subplot(111)
     
