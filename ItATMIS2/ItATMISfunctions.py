@@ -111,7 +111,7 @@ def dice_coef_loss(y_true, y_pred):
 
 #%% One Pass of iterative training simulation
 from keras.preprocessing.image import ImageDataGenerator
-def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2):
+def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2,augment=True):
     # split off validation data
     numIm = cur_inputs.shape[0]
     val_inds = np.random.choice(np.arange(numIm),
@@ -124,25 +124,28 @@ def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2):
     
     
     # setup image data generator
-    datagen1 = ImageDataGenerator(
-        rotation_range=15,
-        shear_range=0.5,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        vertical_flip=True,
-        fill_mode='nearest')
-    datagen2 = ImageDataGenerator(
-        rotation_range=15,
-        shear_range=0.5,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        vertical_flip=True,
-        fill_mode='nearest')
-     
+    if augment:
+        datagen1 = ImageDataGenerator(
+            rotation_range=15,
+            shear_range=0.5,
+            width_shift_range=0.1,
+            height_shift_range=0.1,
+            zoom_range=0.2,
+            horizontal_flip=True,
+            vertical_flip=True,
+            fill_mode='nearest')
+        datagen2 = ImageDataGenerator(
+            rotation_range=15,
+            shear_range=0.5,
+            width_shift_range=0.1,
+            height_shift_range=0.1,
+            zoom_range=0.2,
+            horizontal_flip=True,
+            vertical_flip=True,
+            fill_mode='nearest')
+    else:
+        datagen1 = ImageDataGenerator()
+        datagen2 = ImageDataGenerator()
     # Provide the same seed and keyword arguments to the fit and flow methods
     seed = 1
     datagen1.fit(trainX, seed=seed)
@@ -153,7 +156,10 @@ def SimulateItATMIS(model,cur_inputs,cur_targets,CBs,val_frac=0.2):
     # calculate number of epochs and batches
     # numEp = np.maximum(40,np.minimum(np.int(10*(self.FNind+1)),100))
     numEp = 30
-    steps = np.minimum(np.int(trainX.shape[0]/batchsize*16),200)
+    if augment:
+        steps = np.minimum(np.int(trainX.shape[0]/batchsize*16),200)
+    else:
+        steps = np.int(trainX.shape[0]/batchsize)
     
     model.fit_generator(datagen,
                         steps_per_epoch=steps,
@@ -189,9 +195,9 @@ def PlotResults(anatomy,scatter=False):
             plt.scatter(iters[it],scores[it])
         else:
             plt.plot(iters[it],scores[it],'-o')
-        plt.title('Dice Score over Iterations')
-        plt.xlabel('Number of subjects')
-        plt.ylabel('Dice')
+    plt.title('Dice Score over Iterations')
+    plt.xlabel('Number of subjects')
+    plt.ylabel('Dice')
     plt.ylim([0,1])
 #%% Plot ItATMIS results as error bars
 def PlotErrorResults(anatomy):
@@ -255,7 +261,7 @@ def PlotComparison(anatomy):
     non_result_files = glob(non_path)
     
     # Create a figure instance
-    fig = plt.figure(None, figsize=(9, 6))
+    fig = plt.figure(None, figsize=(9, 3))
     # Create an axes instance
     ax = fig.add_subplot(111)
     
@@ -281,6 +287,7 @@ def PlotComparison(anatomy):
     plt.legend()
     plt.ylim([0,1])
     plt.xlim([0,21])
+    plt.xticks(range(2,21,2))
     
     fig.savefig('/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/Comparison_{}.png'.format(anatomy), bbox_inches='tight')
 
@@ -388,4 +395,28 @@ def GetCardiacData(image_file,contour_file):
     inputs = np.reshape(images,(-1,256,256))[...,np.newaxis]
     targets = np.reshape(mask,(-1,256,256))[...,np.newaxis]
     return inputs,targets
+    
+#%% Plot both ItATMIS and NonItATMIS results
+from scipy import stats
+def CalculatePvalue(anatomy):
+    # Get files
+    itatmis_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/ItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
+    non_path = '/home/jmj136/deep-learning/ItATMIS2/Abstract/Results/NonItATMIS_SimResults_{}_CV*.txt'.format(anatomy)
+    it_result_files = glob(itatmis_path)
+    non_result_files = glob(non_path)
+    
+    # get itatmis scores
+    it_scores = np.stack([np.loadtxt(f) for f in it_result_files])
+    
+    # get non-itatmis scores
+    non_scores = np.stack([np.loadtxt(f) for f in non_result_files])
+    non_x = np.array([5,10,15,20])
+    
+    
+    # get itatmis scores that correspond to non-itatmis scores
+    it_scores_match = it_scores[:,non_x-1]
+    
+    # calculate stats at each subject number
+    _,pvals = stats.ttest_rel(non_scores,it_scores_match,axis=0)
+    return pvals
     
