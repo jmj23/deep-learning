@@ -101,7 +101,7 @@ DisplayDifferenceMask(lung_joint_im,
 image_files = natsorted(glob(os.path.join(cardiac_data_dir,'sol*.mat')))
 contour_files = natsorted(glob(os.path.join(cardiac_data_dir,'man*.mat')))
 subjs = range(len(image_files))
-cardiac_slice = 13
+cardiac_slice = 6
 data = GetCardiacData(image_files[subjs[2]],contour_files[subjs[2]])
 # separate into inputs and targets
 cardiac_x = data[0]
