@@ -7,14 +7,15 @@ Created on Wed May 31 14:06:34 2017
 import sys
 import os
 sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
+from VisTools import multi_slice_viewer0 # for visualizing results
+import JMJmodels # Where Generator and Discriminator models are defined
+
 from matplotlib import pyplot as plt
 import numpy as np
 import h5py
 import time
 from tqdm import tqdm, trange
-import Models
 import imageio
-from VisTools import multi_slice_viewer0
 from skimage.measure import compare_ssim as ssim
 
 # Use first available GPU
