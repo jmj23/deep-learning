@@ -4,6 +4,8 @@
 Created on Thu Mar  8 12:02:22 2018
 
 @author: jmj136
+
+All rights reserved
 """
 
 import numpy as np
