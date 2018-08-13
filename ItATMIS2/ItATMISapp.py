@@ -1501,7 +1501,10 @@ class NiftiImportThread(QThread):
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
             for im in ims:
                 im -= np.min(im)
-                im /= np.max(im)
+                try:
+                    im /= np.max(im)
+                except Exception as e:
+                    print('Image max of 0')
             # create pre-segmentation for quick select
             WSseg = np.zeros_like(ims)
             for ss in range(WSseg.shape[0]):
@@ -1589,7 +1592,10 @@ class TrainThread(QThread):
             # normalize
             for im in ims:
                 im -= np.min(im)
-                im /= np.max(im)
+                try:
+                    im /= np.max(im)
+                except Exception as e:
+                    print('Image max of 0')
             # add axis
             inputs = ims[...,np.newaxis]
             targets = to_categorical(mask,self.numClasses+1)
