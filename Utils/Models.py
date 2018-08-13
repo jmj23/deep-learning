@@ -17,8 +17,6 @@ from keras.models import Model
 from keras.initializers import RandomNormal
 
 
-#conv_initG = RandomNormal(0, 0.02)
-conv_initG = 'glorot_uniform'
 #conv_initD = RandomNormal(0, 0.02)
 conv_initD = 'he_normal'
 
@@ -30,88 +28,415 @@ def batchnorm():
 
 use_bn = False
 
-#%% Generalized Block Model
-def BlockModel(input_shape,filt_num=16,numBlocks=3,output_chan=1,regression=False):
-    lay_input = Input(shape=(input_shape[1:]),name='input_layer')
+#%% Parameterized 2D Block Model
+def BlockModel2D(input_shape,filt_num=16,numBlocks=3,output_chan=1,regression=False):
+    """Creates a Block CED model for segmentation or image regression problems
+
+    Args:
+        input shape: a list or tuple of [rows,cols,channels] of input images
+        filt_num: the number of filters in the first and last layers
+        This number is multipled linearly increased and decreased throughout the model
+        numBlocks: number of processing blocks. The larger the number the deeper the model
+        output_chan: number of output channels. Set if doing multi-class segmentation
+        regression: Whether to have a continuous output with linear activation
+
+    Returns:
+        An unintialized Keras model
         
-     #calculate appropriate cropping
-    mod = np.mod(input_shape[1:3],2**numBlocks)
-    padamt = mod+2
+    Example useage: SegModel = BlockModel2D([256,256,1],filt_num=8)
+        
+    Notes: Using rows/cols that are powers of 2 is recommended. Otherwise,
+    the rows/cols must be divisible by 2^numBlocks for skip connections
+    to match up properly
+
+    """
+    
+    # check for input shape compatibility
+    rows,cols = input_shape[0:2]
+    assert rows % 2**numBlocks == 0, "Input rows and number of blocks are incompatible"
+    assert cols % 2**numBlocks == 0, "Input cols and number of blocks are incompatible"
+    
     # calculate size reduction
-    startsize = np.max(input_shape[1:3]-padamt)
+    startsize = np.max(input_shape[0:2])
     minsize = (startsize-np.sum(2**np.arange(1,numBlocks+1)))/2**numBlocks
-    if minsize<4:
-        raise ValueError('Too small of input for this many blocks. Use fewer blocks or larger input')
+    assert minsize>4, "Too small of input for this many blocks. Use fewer blocks or larger input"
     
-    crop = Cropping2D(cropping=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_input)
+    # input layer
+    lay_input = Input(shape=input_shape,name='input_layer')
     
-    # contracting block 1
-    rr = 1
-    lay_conv1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(crop)
-    lay_conv3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(crop)
-    lay_conv51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(crop)
-    lay_conv52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr))(lay_conv51)
-    lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-    lay_conv_all = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
-    bn = BatchNormalization()(lay_conv_all)
-    lay_act = ELU(name='elu{}_1'.format(rr))(bn)
-    lay_stride = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
-    lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
-    act_list = [lay_act]
-    
-    # contracting blocks 2-n 
-    for rr in range(2,numBlocks+1):
-        lay_conv1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(lay_act)
-        lay_conv3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(lay_act)
-        lay_conv51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(lay_act)
-        lay_conv52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr))(lay_conv51)
-        lay_merge = concatenate([lay_conv1,lay_conv3,lay_conv52],name='merge_{}'.format(rr))
-        lay_conv_all = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(lay_merge)
-        bn = BatchNormalization()(lay_conv_all)
-        lay_act = ELU(name='elu_{}'.format(rr))(bn)
-        lay_stride = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='ConvStride_{}'.format(rr))(lay_act)
-        lay_act = ELU(name='elu{}_2'.format(rr))(lay_stride)
-        act_list.append(lay_act)
+    # contracting blocks
+    x = lay_input
+    skip_list = []
+    for rr in range(1,numBlocks+1):
+        x1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr))(x)
+        x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
+        x3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr))(x)
+        x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
+        x51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr))(x)
+        x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
+        x52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr))(x51)
+        x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
+        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
+        x = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_all_{}'.format(rr))(x)
+        x = ZeroPadding2D(padding=(1,1),name='PrePad_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='DownSample_{}'.format(rr))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_downsample_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr, (3, 3),padding='same',name='ConvClean_{}'.format(rr))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_clean_{}'.format(rr))(x)
+        print(x.shape[1])
+        skip_list.append(x)
         
-    # expanding block n
-    dd=numBlocks
-    lay_deconv1 = Conv2D(filt_num*dd,(1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_act)
-    lay_deconv3 = Conv2D(filt_num*dd,(3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_act)
-    lay_deconv51 = Conv2D(filt_num*dd, (3,3),padding='same',name='DeConv51_{}'.format(dd))(lay_act)
-    lay_deconv52 = Conv2D(filt_num*dd, (3,3),padding='same',name='DeConv52_{}'.format(dd))(lay_deconv51)
-    lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
-    lay_deconv_all = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
-    bn = BatchNormalization()(lay_deconv_all)
-    lay_act = ELU(name='elu_d{}'.format(dd))(bn)
-    lay_stride = Conv2DTranspose(filt_num*dd,(4,4),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
-    lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
         
-    # expanding blocks n-1
-    expnums = list(range(1,numBlocks))
+    # expanding blocks
+    expnums = list(range(1,numBlocks+1))
     expnums.reverse()
     for dd in expnums:
-        lay_skip = concatenate([act_list[dd-1],lay_act],name='skip_connect_{}'.format(dd))
-        lay_deconv1 = Conv2D(filt_num*dd,(1,1),padding='same',name='DeConv1_{}'.format(dd))(lay_skip)
-        lay_deconv3 = Conv2D(filt_num*dd,(3,3),padding='same',name='DeConv3_{}'.format(dd))(lay_skip)
-        lay_deconv51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd))(lay_skip)
-        lay_deconv52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd))(lay_deconv51)
-        lay_merge = concatenate([lay_deconv1,lay_deconv3,lay_deconv52],name='merge_d{}'.format(dd))
-        lay_deconv_all = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(lay_merge)
-        bn = BatchNormalization()(lay_deconv_all)
-        lay_act = ELU(name='elu_d{}'.format(dd))(bn)
-        lay_stride = Conv2DTranspose(filt_num*dd,(4,4),strides=(2,2),name='DeConvStride_{}'.format(dd))(lay_act)
-        lay_act = ELU(name='elu_d{}_2'.format(dd))(lay_stride)
-                
-    lay_pad = ZeroPadding2D(padding=((0,padamt[0]), (0,padamt[1])), data_format=None)(lay_act)
-    lay_cleanup = Conv2D(filt_num,(3,3),padding='same',name='CleanUp_1')(lay_pad)
-    lay_cleanup = Conv2D(filt_num,(3,3),padding='same',name='CleanUp_2')(lay_cleanup)
+        if dd < len(skip_list):
+            print(skip_list[dd-1].shape[1],x.shape[1])
+            x = concatenate([skip_list[dd-1],x],name='skip_connect_{}'.format(dd))
+        x1 = Conv2D(filt_num*dd, (1, 1),padding='same',name='DeConv1_{}'.format(dd))(x)
+        x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
+        x3 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv3_{}'.format(dd))(x)
+        x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
+        x51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd))(x)
+        x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
+        x52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd))(x51)
+        x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
+        x = concatenate([x1,x3,x52],name='Dmerge_{}'.format(dd))
+        x = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_Dall_{}'.format(dd))(x)
+        x = UpSampling2D(size=(2,2),name='UpSample_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean1_{}'.format(dd))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean2_{}'.format(dd))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
+        
     # classifier
     if regression:
-            lay_out = Conv2D(output_chan,(1,1),activation='linear',name='regression_layer')(lay_cleanup)
+        if residual:
+            lay_res = Conv2D(1,(1,1),activation='linear',name='regression_layer')(x)
+            in0 = Lambda(lambda x : x[...,1,0],name='channel_split')(lay_input)
+            in0 = Reshape([rows,cols,1])(in0)
+            lay_out = add([in0,lay_res],name='output_layer')
+        else:
+            lay_out = Conv2D(output_chan,(1,1),activation='linear',name='regression_layer')(x)
     elif output_chan==1:
-        lay_out = Conv2D(output_chan,(1,1), activation='sigmoid',name='output_layer')(lay_cleanup)
+        lay_out = Conv2D(output_chan,(1,1), activation='sigmoid',name='output_layer')(x)
     else:
-        lay_out = Conv2D(output_chan,(1,1), activation='softmax',name='output_layer')(lay_cleanup)
+        lay_out = Conv2D(output_chan,(1,1), activation='softmax',name='output_layer')(x)
+    
+    return Model(lay_input,lay_out)
+
+#%% Parameterized 2.5D Block Model with 3 input slices
+def BlockModelMS3(input_shape,filt_num=16,numBlocks=3,output_chan=1,regression=False,
+                 residual=False,use_bn=False,conv_init = 'glorot_uniform'):
+    """Creates a Block CED model for segmentation or image regression problems
+    with 3 slice input and 1 slice output
+
+    Args:
+        input shape: a list or tuple of [rows,cols,slices,channels] of input images
+        filt_num: the number of filters in the first and last layers
+            This number is multipled linearly increased and decreased throughout the model
+        numBlocks: number of processing blocks. The larger the number the deeper the model
+        output_chan: number of output channels. Set if doing multi-class segmentation
+        regression: Whether to have a continuous output with linear activation
+        residual: Whether to create a ResNet where the network learns a residual to add
+            to the input. The output of the network is added to the first channel of the
+            middle slice of the input to generate the final output.
+        use_bn: Whether to use batch normalization. Not recommended for GAN useage
+        conv_init: The initializer string to use for convolution kernel initialization.
+        
+
+    Returns:
+        An unintialized Keras model
+        
+    Example useage: GenModel = BlockModelMS3([256,256,3,1],filt_num=8)
+        
+    Notes: Using rows/cols that are powers of 2 is recommended. Otherwise,
+        the rows/cols must be divisible by 2^numBlocks for skip connections
+        to match up properly
+
+    """
+    
+    # check for input shape compatibility
+    rows,cols,slices = input_shape[0:3]
+    assert slices == 3, "Number of slices must be 3"
+    assert rows % 2**numBlocks == 0, "Input shape and number of blocks are incompatible"
+    assert cols % 2**numBlocks == 0, "Input shape and number of blocks are incompatible"
+    
+    # calculate size reduction
+    startsize = np.maximum(rows,cols)
+    minsize = (startsize-np.sum(2**np.arange(1,numBlocks+1)))/2**numBlocks
+    assert minsize>4, "Too small of input for this many blocks. Use fewer blocks or larger input"
+    
+    # input layer    
+    lay_input = Input(shape=input_shape,name='input_layer')
+    
+    MSpad = ZeroPadding3D(padding=(1,1,0),name='MSprepad')(lay_input)        
+    MSconv = Conv3D(filt_num,(3,3,3),padding='valid',name='MSconv1',kernel_initializer=conv_init)(MSpad)
+    if use_bn:
+        bn = batchnorm()(MSconv)
+        MSact = ELU(name='MSelu1')(bn)
+    else:
+        MSact = ELU(name='MSelu1')(MSconv)
+
+    x = Reshape((rows,cols,filt_num))(MSact)
+    print(x.shape)
+    
+    # contracting blocks
+    skip_list = []
+    for rr in range(1,numBlocks+1):
+        x1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
+        x3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
+        x51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
+        x52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr),kernel_initializer=conv_init)(x51)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
+        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
+        x = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_all_{}'.format(rr))(x)
+        x = ZeroPadding2D(padding=(1,1),name='PrePad_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='DownSample_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_downsample_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr, (3, 3),padding='same',name='ConvClean_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_clean_{}'.format(rr))(x)
+        skip_list.append(x)
+        
+        
+    # expanding blocks
+    expnums = list(range(1,numBlocks+1))
+    expnums.reverse()
+    for dd in expnums:
+        if dd < len(skip_list):
+            x = concatenate([skip_list[dd-1],x],name='skip_connect_{}'.format(dd))
+        x1 = Conv2D(filt_num*dd, (1, 1),padding='same',name='DeConv1_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
+        x3 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv3_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
+        x51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
+        x52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd),kernel_initializer=conv_init)(x51)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
+        x = concatenate([x1,x3,x52],name='Dmerge_{}'.format(dd))
+        x = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dall_{}'.format(dd))(x)
+        x = UpSampling2D(size=(2,2),name='UpSample_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean1_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean2_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
+    
+    # classifier
+    if regression:
+        if residual:
+            lay_res = Conv2D(1,(1,1),activation='linear',name='regression_layer',kernel_initializer=conv_init)(x)
+            in0 = Lambda(lambda x : x[...,1,0],name='channel_split')(lay_input)
+            in0 = Reshape([rows,cols,1])(in0)
+            lay_out = add([in0,lay_res],name='output_layer')
+        else:
+            lay_out = Conv2D(output_chan,(1,1),activation='linear',name='regression_layer',kernel_initializer=conv_init)(x)
+    elif output_chan==1:
+        lay_out = Conv2D(output_chan,(1,1), activation='sigmoid',name='output_layer',kernel_initializer=conv_init)(x)
+    else:
+        lay_out = Conv2D(output_chan,(1,1), activation='softmax',name='output_layer',kernel_initializer=conv_init)(x)
+    
+    return Model(lay_input,lay_out)
+
+#%% Parameterized 2.5D Block Model with 5 input slices
+def BlockModelMS5(input_shape,filt_num=16,numBlocks=3,output_chan=1,regression=False,
+                 residual=False,use_bn=False,conv_init = 'glorot_uniform'):
+    """Creates a Block CED model for segmentation or image regression problems
+    with 5 slice input and 1 slice output
+
+    Args:
+        input shape: a list or tuple of [rows,cols,slices,channels] of input images
+        filt_num: the number of filters in the first and last layers
+            This number is multipled linearly increased and decreased throughout the model
+        numBlocks: number of processing blocks. The larger the number the deeper the model
+        output_chan: number of output channels. Set if doing multi-class segmentation
+        regression: Whether to have a continuous output with linear activation
+        residual: Whether to create a ResNet where the network learns a residual to add
+            to the input. The output of the network is added to the first channel of the
+            middle slice of the input to generate the final output.
+        use_bn: Whether to use batch normalization. Not recommended for GAN useage
+        conv_init: The initializer string to use for convolution kernel initialization.
+        
+
+    Returns:
+        An unintialized Keras model
+        
+    Example useage: GenModel = BlockModelMS5([256,256,5,1],filt_num=8)
+        or try: GenModel = BlockModelMS5(x_train.shape[1:])
+        
+    Notes: Using rows/cols that are powers of 2 is recommended. Or,
+        the rows/cols must be divisible by ^*numBlocks for skip connections
+        to match up properly
+
+    """
+    
+    # check for input shape compatibility
+    rows,cols,slices = input_shape[0:3]
+    assert slices == 5, "Number of slices must be 5"
+    assert rows % 2**numBlocks == 0, "Input shape and number of blocks are incompatible"
+    assert cols % 2**numBlocks == 0, "Input shape and number of blocks are incompatible"
+    
+    # calculate size reduction
+    startsize = np.maximum(rows,cols)
+    minsize = (startsize-np.sum(2**np.arange(1,numBlocks+1)))/2**numBlocks
+    assert minsize>4, "Too small of input for this many blocks. Use fewer blocks or larger input"
+    
+    # input layer    
+    lay_input = Input(shape=input_shape,name='input_layer')
+    
+    MSpad = ZeroPadding3D(padding=(1,1,0),name='MSprepad1')(lay_input)        
+    MSconv = Conv3D(filt_num,(3,3,3),padding='valid',name='MSconv1',kernel_initializer=conv_init)(MSpad)
+    if use_bn:
+        bn = batchnorm()(MSconv)
+        MSact = ELU(name='MSelu1')(bn)
+    else:
+        MSact = ELU(name='MSelu1')(MSconv)
+
+    MSpad = ZeroPadding3D(padding=(1,1,0),name='MSprepad2')(MSact)        
+    MSconv = Conv3D(filt_num,(3,3,3),padding='valid',name='MSconv2',kernel_initializer=conv_init)(MSpad)
+    if use_bn:
+        bn = batchnorm()(MSconv)
+        MSact = ELU(name='MSelu2')(bn)
+    else:
+        MSact = ELU(name='MSelu2')(MSconv)
+
+    x = Reshape((rows,cols,filt_num))(MSact)
+    
+    # contracting blocks
+    skip_list = []
+    for rr in range(1,numBlocks+1):
+        x1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
+        x3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
+        x51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
+        x52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr),kernel_initializer=conv_init)(x51)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
+        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
+        x = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_all_{}'.format(rr))(x)
+        x = ZeroPadding2D(padding=(1,1),name='PrePad_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='DownSample_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_downsample_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr, (3, 3),padding='same',name='ConvClean_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_clean_{}'.format(rr))(x)
+        skip_list.append(x)
+        
+        
+    # expanding blocks
+    expnums = list(range(1,numBlocks+1))
+    expnums.reverse()
+    for dd in expnums:
+        if dd < len(skip_list):
+            x = concatenate([skip_list[dd-1],x],name='skip_connect_{}'.format(dd))
+        x1 = Conv2D(filt_num*dd, (1, 1),padding='same',name='DeConv1_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
+        x3 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv3_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
+        x51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
+        x52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd),kernel_initializer=conv_init)(x51)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
+        x = concatenate([x1,x3,x52],name='Dmerge_{}'.format(dd))
+        x = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dall_{}'.format(dd))(x)
+        x = UpSampling2D(size=(2,2),name='UpSample_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean1_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean2_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
+    
+    # classifier
+    if regression:
+        if residual:
+            lay_res = Conv2D(1,(1,1),activation='linear',name='residual_layer',kernel_initializer=conv_init)(x)
+            in0 = Lambda(lambda x : x[...,2,0],name='channel_split')(lay_input)
+            in0 = Reshape([rows,cols,1])(in0)
+            lay_out = add([in0,lay_res],name='output_layer')
+        else:
+            lay_out = Conv2D(output_chan,(1,1),activation='linear',name='regression_layer',kernel_initializer=conv_init)(x)
+    elif output_chan==1:
+        lay_out = Conv2D(output_chan,(1,1), activation='sigmoid',name='output_layer',kernel_initializer=conv_init)(x)
+    else:
+        lay_out = Conv2D(output_chan,(1,1), activation='softmax',name='output_layer',kernel_initializer=conv_init)(x)
     
     return Model(lay_input,lay_out)
 
@@ -166,147 +491,7 @@ def Unet(input_shape,filt_num=16,numBlocks=3,output_chan=1,regression=False):
         lay_out = Conv2D(output_chan,(1,1), activation='softmax',name='output_layer')(x)
     
     return Model(lay_input,lay_out)
-#%% 3 multislice Generator Model
-def GeneratorMS3(input_shape,numBlocks,filtnum=20,use_bn=False):
-    conv_initG = 'glorot_uniform'
-    lay_input = Input(shape=input_shape,name='input_layer')
-    
-    padamt = 1
-    MSconv = Conv3D(8,(3,3,3),padding='valid',name='MSconv1')(lay_input)
-    if use_bn:
-        bn = batchnorm()(MSconv, training=1)
-        MSact = ELU(name='MSelu1')(bn)
-    else:
-        MSact = ELU(name='MSelu1')(MSconv)
 
-    x = Reshape((254,254,16))(MSact)
-    
-    # contracting block 1
-    rr = 1
-    x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(x)
-    x1 = ELU(name='elu{}_1'.format(rr))(x1)
-    x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(x)
-    x3 = ELU(name='elu{}_3'.format(rr))(x3)
-    x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(x)
-    x51 = ELU(name='elu{}_51'.format(rr))(x51)
-    x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv52_{}'.format(rr))(x51)
-    x52 = ELU(name='elu{}_52'.format(rr))(x52)
-    lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
-    x = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu{}_all'.format(rr))(x)
-    x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
-                       name='ConvStride_{}'.format(rr))(x)
-    x = ELU(name='elu{}_stride'.format(rr))(x)
-    act_list = [x]
-    
-    # contracting blocks 2-numBlocks
-    for rr in range(2,numBlocks+1):
-        x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(x)
-        x1 = ELU(name='elu{}_1'.format(rr))(x1)
-        x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(x)
-        x3 = ELU(name='elu{}_3'.format(rr))(x3)
-        x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(x)
-        x51 = ELU(name='elu{}_51'.format(rr))(x51)
-        x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv52_{}'.format(rr))(x51)
-        x52 = ELU(name='elu{}_52'.format(rr))(x52)
-        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
-        x = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='ConvAll_{}'.format(rr))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}_all'.format(rr))(x)
-        x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
-                       name='ConvStride_{}'.format(rr))(x)
-        x = ELU(name='elu{}_stride'.format(rr))(x)
-        act_list.append(x)
-    
-    # expanding block #numBlock
-    dd=numBlocks
-    x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv1_{}'.format(dd))(x)
-    x1 = ELU(name='elu{}d_1'.format(dd))(x1)
-    x3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv3_{}'.format(dd))(x)
-    x3 = ELU(name='elu{}d_3'.format(dd))(x3)
-    x51 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv51_{}'.format(dd))(x)
-    x51 = ELU(name='elu{}d_51'.format(dd))(x51)
-    x52 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv52_{}'.format(dd))(x51)
-    x52 = ELU(name='elu{}d_52'.format(dd))(x52)
-    x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
-    x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu{}d_all'.format(dd))(x)    
-    x = UpSampling2D()(x)
-    x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_1'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-    x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_2'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-    
-    # expanding blocks 2-1
-    expnums = list(range(1,3))
-    expnums.reverse()
-    for dd in expnums:
-        x = concatenate([act_list[dd-1],x],name='skip_connect_{}'.format(dd))
-        x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv1_{}'.format(dd))(x)
-        x1 = ELU(name='elu{}d_1'.format(dd))(x1)
-        x3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv3_{}'.format(dd))(x)
-        x3 = ELU(name='elu{}d_3'.format(dd))(x3)
-        x51 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv51_{}'.format(dd))(x)
-        x51 = ELU(name='elu{}d_51'.format(dd))(x51)
-        x52 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv52_{}'.format(dd))(x51)
-        x52 = ELU(name='elu{}d_52'.format(dd))(x52)
-        x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
-        x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}d_all'.format(dd))(x)
-        x = UpSampling2D()(x)
-        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_1'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_2'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-    
-    # regressor    
-    x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
-    x = Conv2D(1,(1,1), activation='linear',kernel_initializer=conv_initG,
-                       name='regression')(x)
-    in0 = Lambda(lambda x : x[:,2,...,0],name='channel_split')(lay_input)
-    in0 = Reshape([256,256,1])(x)
-    lay_res = add([in0,x],name='residual')
-    
-    return Model(lay_input,lay_res)
 #%% 2D pix2pix discriminator
 def Discriminator2D(conditional_input_shape,test_input_shape,filtnum=16):
     # Conditional Inputs
@@ -475,153 +660,6 @@ def DiscriminatorMS3(conditional_input_shape,test_input_shape,filtnum=16):
     
     return Model(inputs=[lay_cond_input,lay_test_input],outputs=[lay_dense])
 
-#%% 5-multislice Generator Model
-def GeneratorMS5(input_shape,numBlocks,use_bn=False):
-    conv_initG = 'glorot_uniform'
-    lay_input = Input(shape=input_shape,name='input_layer')
-    
-    padamt = 1
-    MSconv = Conv3D(8,(3,3,3),padding='valid',name='MSconv1')(lay_input)
-    if use_bn:
-        bn = batchnorm()(MSconv, training=1)
-        MSact = ELU(name='MSelu1')(bn)
-    else:
-        MSact = ELU(name='MSelu1')(MSconv)
-    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv2')(MSact)
-    if use_bn:
-        bn = batchnorm()(MSconv, training=1)
-        MSact = ELU(name='MSelu2')(bn)
-    else:
-        MSact = ELU(name='MSelu2')(MSconv)
-    MSconvRS = Reshape((252,252,16))(MSact)
-    x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(MSconvRS)
-    filtnum = 20
-    # contracting block 1
-    rr = 1
-    x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(x)
-    x1 = ELU(name='elu{}_1'.format(rr))(x1)
-    x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(x)
-    x3 = ELU(name='elu{}_3'.format(rr))(x3)
-    x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(x)
-    x51 = ELU(name='elu{}_51'.format(rr))(x51)
-    x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv52_{}'.format(rr))(x51)
-    x52 = ELU(name='elu{}_52'.format(rr))(x52)
-    lay_merge = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
-    x = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='ConvAll_{}'.format(rr))(lay_merge)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu{}_all'.format(rr))(x)
-    x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
-                       name='ConvStride_{}'.format(rr))(x)
-    x = ELU(name='elu{}_stride'.format(rr))(x)
-    act_list = [x]
-    
-    # contracting blocks 2-numBlocks
-    for rr in range(2,numBlocks+1):
-        x1 = Conv2D(filtnum*rr, (1, 1),padding='same',kernel_initializer=conv_initG,
-                       name='Conv1_{}'.format(rr))(x)
-        x1 = ELU(name='elu{}_1'.format(rr))(x1)
-        x3 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv3_{}'.format(rr))(x)
-        x3 = ELU(name='elu{}_3'.format(rr))(x3)
-        x51 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv51_{}'.format(rr))(x)
-        x51 = ELU(name='elu{}_51'.format(rr))(x51)
-        x52 = Conv2D(filtnum*rr, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='Conv52_{}'.format(rr))(x51)
-        x52 = ELU(name='elu{}_52'.format(rr))(x52)
-        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
-        x = Conv2D(filtnum*rr,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='ConvAll_{}'.format(rr))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}_all'.format(rr))(x)
-        x = Conv2D(filtnum*rr,(4,4),padding='valid',strides=(2,2),kernel_initializer=conv_initG,
-                       name='ConvStride_{}'.format(rr))(x)
-        x = ELU(name='elu{}_stride'.format(rr))(x)
-        act_list.append(x)
-    
-    # expanding block #numBlock
-    dd=numBlocks
-    x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv1_{}'.format(dd))(x)
-    x1 = ELU(name='elu{}d_1'.format(dd))(x1)
-    x3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv3_{}'.format(dd))(x)
-    x3 = ELU(name='elu{}d_3'.format(dd))(x3)
-    x51 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv51_{}'.format(dd))(x)
-    x51 = ELU(name='elu{}d_51'.format(dd))(x51)
-    x52 = Conv2D(filtnum*dd, (3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv52_{}'.format(dd))(x51)
-    x52 = ELU(name='elu{}d_52'.format(dd))(x52)
-    x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
-    x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu{}d_all'.format(dd))(x)    
-    x = UpSampling2D()(x)
-    x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_1'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-    x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_2'.format(dd))(x)
-    if use_bn:
-        x = batchnorm()(x, training=1)
-    x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-    
-    # expanding blocks 2-1
-    expnums = list(range(1,3))
-    expnums.reverse()
-    for dd in expnums:
-        x = concatenate([act_list[dd-1],x],name='skip_connect_{}'.format(dd))
-        x1 = Conv2D(filtnum*dd,(1,1),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv1_{}'.format(dd))(x)
-        x1 = ELU(name='elu{}d_1'.format(dd))(x1)
-        x3 = Conv2D(filtnum*dd,(3,3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv3_{}'.format(dd))(x)
-        x3 = ELU(name='elu{}d_3'.format(dd))(x3)
-        x51 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv51_{}'.format(dd))(x)
-        x51 = ELU(name='elu{}d_51'.format(dd))(x51)
-        x52 = Conv2D(filtnum*dd, (3, 3),padding='same',kernel_initializer=conv_initG,
-                       name='DeConv52_{}'.format(dd))(x51)
-        x52 = ELU(name='elu{}d_52'.format(dd))(x52)
-        x = concatenate([x1,x3,x52],name='merge_d{}'.format(dd))
-        x = Conv2D(filtnum*dd,(1,1),padding='valid',kernel_initializer=conv_initG,
-                       use_bias=False,name='DeConvAll_{}'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu{}d_all'.format(dd))(x)
-        x = UpSampling2D()(x)
-        x = Conv2DTranspose(filtnum*dd, (3, 3),kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_1'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_1'.format(dd))(x)
-        x = Conv2D(filtnum*dd, (3,3), padding='same',kernel_initializer=conv_initG,
-                       use_bias=False,name='cleanup{}_2'.format(dd))(x)
-        if use_bn:
-            x = batchnorm()(x, training=1)
-        x = ELU(name='elu_cleanup{}_2'.format(dd))(x)
-    
-    # regressor    
-    x = ZeroPadding2D(padding=((padamt,padamt), (padamt,padamt)), data_format=None)(x)
-    x = Conv2D(1,(1,1), activation='linear',kernel_initializer=conv_initG,
-                       name='regression')(x)
-    in0 = Lambda(lambda x : x[:,2,...,0],name='channel_split')(lay_input)
-    in0 = Reshape([256,256,1])(x)
-    lay_res = add([in0,x],name='residual')
-    
-    return Model(lay_input,lay_res)
 
 #%% 5 multislice pix2pix discriminator
 def DiscriminatorMS5(conditional_input_shape,test_input_shape,filtnum=16):
@@ -713,7 +751,8 @@ def DiscriminatorMS5(conditional_input_shape,test_input_shape,filtnum=16):
     return Model(inputs=[lay_cond_input,lay_test_input],outputs=[lay_dense])
 
 #%% Cycle GAN Generator Model with limited receptive field
-def CycleGANgenerator(input_shape, output_chan,filtnum=16,numBlocks=4,noStride=2,use_bn=False,reg=True):
+def CycleGANgenerator(input_shape, output_chan,filtnum=16,numBlocks=4,noStride=2,
+                      use_bn=False,reg=True,conv_initG = 'glorot_uniform'):
     # arguments are input shape [x,y,channels] (no # slices)
     # and number of output channels
     
@@ -900,6 +939,7 @@ def CycleGANgenerator(input_shape, output_chan,filtnum=16,numBlocks=4,noStride=2
 
 #%% Cycle GAN discriminator
 def CycleGANdiscriminator(input_shape,filtnum=16,numBlocks=3):
+    conv_initD = 'he_normal'
     # Input same as generator- [x,y,channels]
     lay_input = Input(shape=input_shape,name='input')
     
@@ -949,8 +989,147 @@ def CycleGANdiscriminator(input_shape,filtnum=16,numBlocks=3):
     
     return Model(lay_input,lay_avg)
 
+#%% DeepMuMap Model
+def BlockModel_dual(input_shape,filt_num=16,numBlocks=3,output_chan=1,
+                    dual_output=True,use_bn=True,conv_init = 'glorot_uniform'):
+    """Creates a Block CED model for simultaneous segmentation and
+    regression with 3 slice input and two 1 slice outputs
+
+    Args:
+        input shape: a list or tuple of [rows,cols,slices,channels] of input images
+        filt_num: the number of filters in the first and last layers
+            This number is multipled linearly increased and decreased throughout the model
+        numBlocks: number of processing blocks. The larger the number the deeper the model
+        output_chan: number of output channels. Set if doing multi-class segmentation
+        dual_output: whether to have both regression and segmentation output. Only
+            regression if False
+        use_bn: Whether to use batch normalization. Not recommended for GAN useage
+        conv_init: The initializer string to use for convolution kernel initialization.
+        
+
+    Returns:
+        An unintialized Keras model
+        
+    Example useage: MuMapModel = BlockModel_dual([256,256,5,1],filt_num=8)
+        or try: MuMapModel = BlockModel_dual(x_train.shape[1:])
+        
+    Notes: Using rows/cols that are powers of 2 is recommended. Or,
+        the rows/cols must be divisible by 2**numBlocks for skip connections
+        to match up properly
+
+    """
+    
+    # check for input shape compatibility
+    rows,cols,slices = input_shape[0:3]
+    assert slices == 3, "Number of slices must be 3"
+    assert rows % 2**numBlocks == 0, "Input shape and number of blocks are incompatible"
+    assert cols % 2**numBlocks == 0, "Input shape and number of blocks are incompatible"
+    
+    # calculate size reduction
+    startsize = np.maximum(rows,cols)
+    minsize = (startsize-np.sum(2**np.arange(1,numBlocks+1)))/2**numBlocks
+    assert minsize>4, "Too small of input for this many blocks. Use fewer blocks or larger input"
+
+    # input layer    
+    lay_input = Input(shape=input_shape,name='input_layer')
+    
+    MSpad = ZeroPadding3D(padding=(1,1,0),name='MSprepad')(lay_input)        
+    MSconv = Conv3D(filt_num,(3,3,3),padding='valid',name='MSconv1',kernel_initializer=conv_init)(MSpad)
+    if use_bn:
+        bn = batchnorm()(MSconv)
+        MSact = ELU(name='MSelu1')(bn)
+    else:
+        MSact = ELU(name='MSelu1')(MSconv)
+
+    x = Reshape((rows,cols,filt_num))(MSact)
+    
+    # contracting blocks
+    skip_list = []
+    for rr in range(1,numBlocks+1):
+        x1 = Conv2D(filt_num*rr, (1, 1),padding='same',name='Conv1_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
+        x3 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv3_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
+        x51 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv51_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
+        x52 = Conv2D(filt_num*rr, (3, 3),padding='same',name='Conv52_{}'.format(rr),kernel_initializer=conv_init)(x51)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
+        x = concatenate([x1,x3,x52],name='merge_{}'.format(rr))
+        x = Conv2D(filt_num*rr,(1,1),padding='valid',name='ConvAll_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_all_{}'.format(rr))(x)
+        x = ZeroPadding2D(padding=(1,1),name='PrePad_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr,(4,4),padding='valid',strides=(2,2),name='DownSample_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_downsample_{}'.format(rr))(x)
+        x = Conv2D(filt_num*rr, (3, 3),padding='same',name='ConvClean_{}'.format(rr),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_clean_{}'.format(rr))(x)
+        skip_list.append(x)
+        
+        
+    # expanding blocks
+    expnums = list(range(1,numBlocks+1))
+    expnums.reverse()
+    for dd in expnums:
+        if dd < len(skip_list):
+            x = concatenate([skip_list[dd-1],x],name='skip_connect_{}'.format(dd))
+        x1 = Conv2D(filt_num*dd, (1, 1),padding='same',name='DeConv1_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
+        x3 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv3_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
+        x51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
+        x52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd),kernel_initializer=conv_init)(x51)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
+        x = concatenate([x1,x3,x52],name='Dmerge_{}'.format(dd))
+        x = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dall_{}'.format(dd))(x)
+        x = UpSampling2D(size=(2,2),name='UpSample_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean1_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean2_{}'.format(dd),kernel_initializer=conv_init)(x)
+        if use_bn:
+            x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
+    
+    # regressor
+    lay_reg = Conv2D(1,(1,1), activation='linear',name='reg_output')(x)
+    if dual_output:
+        # classifier
+        lay_class = Conv2D(output_chan,(1,1), activation='softmax',name='class_output',kernel_initializer=conv_init)(x)
+        returnModel = Model(inputs=[lay_input],outputs=[lay_reg,lay_class])
+    else:
+        returnModel = Model(lay_input,lay_reg)
+        
+    return returnModel
+
 #%%
 def EncoderBlock(ind,filtmult,x):
+    conv_initG = 'glorot_uniform'
     x1 = Conv2D(filtmult*ind, (1, 1),padding='same',kernel_initializer=conv_initG,
                            name='Conv1_{}'.format(ind))(x)
     x1 = ELU(name='elu_1_{}'.format(ind))(x1)
@@ -974,6 +1153,7 @@ def EncoderBlock(ind,filtmult,x):
     return x
 #%%
 def DecoderBlock(ind,ind2,filtmult,x,is_res=False):
+    conv_initG = 'glorot_uniform'
     filts = filtmult*(ind-ind2+1)
     x1 = Conv2D(filts,(1,1),padding='same',kernel_initializer=conv_initG,
                        name='DeConv1_{}-{}'.format(ind,ind2))(x)
@@ -1001,22 +1181,40 @@ def DecoderBlock(ind,ind2,filtmult,x,is_res=False):
     return x
 #%% Layered Residual Model with MS = 3
 def ResBlockModel(input_shape,numBlocks=3,filtnum=16):
+    """Creates a Block CED model for multi-residual regression 
+        with 3 slice input and 1 slice output
+
+    Args:
+        input shape: a list or tuple of [rows,cols,slices,channels] of input images
+        filt_num: the number of filters in the first and last layers
+            This number is multipled linearly increased and decreased throughout the model
+        numBlocks: number of processing blocks. The larger the number the deeper the model        
+
+    Returns:
+        An unintialized Keras model
+        
+    Notes: Using rows/cols that are powers of 2 is recommended. Otherwise,
+        the rows/cols must be divisible by 2^numBlocks for skip connections
+        to match up properly
+
+    """
     # Input layer
     lay_input = Input(shape=input_shape,name='input_layer')
+    rows,cols = input_shape[:2]
     # extract PET image channel from center slice
     res = Lambda(lambda x : x[:,1,...,0],name='channel_split')(lay_input)
-    res = Reshape([256,256,1])(res)
+    res = Reshape([cols,rows,1])(res)
     
     # Pad input before 3D conv to get right output shape
     padamt = 1
     zp = ZeroPadding3D(padding=((0,0),(padamt,padamt),(padamt,padamt)),data_format=None)(lay_input)
-    MSconv = Conv3D(16,(3,3,3),padding='valid',name='MSconv')(zp)
+    MSconv = Conv3D(filtnum,(3,3,3),padding='valid',name='MSconv')(zp)
     if use_bn:
         bn = batchnorm()(MSconv, training=1)
         MSact = ELU(name='MSelu')(bn)
     else:
         MSact = ELU(name='MSelu')(MSconv)
-    x = Reshape((256,256,16))(MSact)
+    x = Reshape((rows,cols,filtnum))(MSact)
     
     block_ends = []
     aa = 0
