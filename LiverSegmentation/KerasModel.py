@@ -91,3 +91,24 @@ def dice_coef_loss(y_true, y_pred):
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return 1-(2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
+
+# function for calculating over multiple subjects
+def CalcVolumes(input_file,target_file,vox_vol,model):
+    # load selected input
+    input = np.load(input_file)[...,np.newaxis]
+    # get mask prediction
+    output = model.predict(input,batch_size=16)
+    # threshold
+    mask = (output>.5).astype(np.int)
+    # count voxels
+    tot_voxels = np.sum(mask)
+    # get volume
+    volume = tot_voxels * vox_vol
+    # load selected target
+    target = np.load(target_file)
+    truth_mask = (target>.5).astype(np.int)
+    # count voxels
+    tot_truth_voxels = np.sum(truth_mask)
+    # get volume
+    truth_volume = tot_truth_voxels * vox_vol
+    return volume,truth_volume
