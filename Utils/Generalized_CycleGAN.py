@@ -2,19 +2,28 @@
 """
 Created on Wed May 31 14:06:34 2017
 
-@author: JMJ136
+@author: Jacob Johnson, MS
+@email: jmjohnson33@wisc.edu
+@url: https://github.com/jmj23/deep-learning/
+
+All rights reserved
 """
 import sys
 import os
+sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
+# these are my .py scripts in Utils
+import JMJmodels
+from VisTools import multi_slice_viewer0
+# for plotting
 from matplotlib import pyplot as plt
+# number crunching
 import numpy as np
+# file loading
 import h5py
+# timing
 import time
 # progress bar
 from tqdm import tqdm, trange
-# these are my .py scripts in Utils
-import Models
-from VisTools import multi_slice_viewer0
 # for gifs
 import imageio
 # for comparing images
@@ -116,13 +125,13 @@ import keras.backend as K
 # A is input
 # B is target
 # Cycle loss is between input A to recovered A
-DisModel_A = Models.CycleGANdiscriminator(train_A.shape[1:],numFilters_D,numBlocks_D)
-DisModel_B = Models.CycleGANdiscriminator(train_B.shape[1:],numFilters_D,numBlocks_D)
+DisModel_A = JMJmodels.CycleGANdiscriminator(train_A.shape[1:],numFilters_D,numBlocks_D)
+DisModel_B = JMJmodels.CycleGANdiscriminator(train_B.shape[1:],numFilters_D,numBlocks_D)
 
 # Generator Models
-GenModel_A2B = Models.CycleGANgenerator(train_A.shape[1:],train_B.shape[-1],
+GenModel_A2B = JMJmodels.CycleGANgenerator(train_A.shape[1:],train_B.shape[-1],
                                           numFilters_G,numBlocks_G,noStride,use_bn,B_reg)
-GenModel_B2A = Models.CycleGANgenerator(train_B.shape[1:],train_A.shape[-1],
+GenModel_B2A = JMJmodels.CycleGANgenerator(train_B.shape[1:],train_A.shape[-1],
                                           numFilters_G,numBlocks_G,noStride,use_bn,A_reg)
 
 # Endpoints of graph- A to B
