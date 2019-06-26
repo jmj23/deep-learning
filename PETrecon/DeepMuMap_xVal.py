@@ -93,9 +93,14 @@ for fold in range(numFolds):
     # Set callbacks
     cur_filepath = model_filepath.format(fold)
 #     earlyStopping = EarlyStopping(monitor='val_loss',patience=10,verbose=1,mode='auto')
-    checkpoint = ModelCheckpoint(cur_filepath, monitor='val_reg_output_loss',verbose=0,
-                                 save_best_only=True, save_weights_only=True,
-                                 mode='auto', period=1)
+    if dual_output:
+        checkpoint = ModelCheckpoint(cur_filepath, monitor='val_reg_output_loss',verbose=0,
+                                     save_best_only=True, save_weights_only=True,
+                                     mode='auto', period=1)
+    else:
+        checkpoint = ModelCheckpoint(cur_filepath, monitor='val_loss',verbose=0,
+                                    save_best_only = True, save_weights_only = True,
+                                    mode='auto',period=1)
     reduceLR = ReduceLROnPlateau(monitor='val_loss',patience=3,verbose=1,factor=0.5)
     CBs = [checkpoint,reduceLR]
 
