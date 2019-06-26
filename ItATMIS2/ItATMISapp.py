@@ -1579,7 +1579,8 @@ class TrainThread(QThread):
             self.message_sig.emit('Loading inputs...')
             # get list of files with masks
             file_inds = np.arange(len(self.mask_list))[self.mask_list]
-            print(file_inds)
+            self.message_sig.emit("Training on subjects:")
+            self.message_sig.emit('{}'.format(file_inds))
             # import first nifti and mask
             curind = file_inds[0]
             nft = nib.load(self.file_list[curind])
@@ -1612,7 +1613,10 @@ class TrainThread(QThread):
                     mask = np.swapaxes(np.rollaxis(canon_masknft.get_data(),2,0),1,2)
                     for im in ims:
                         im -= np.min(im)
-                        im /= np.max(im)
+                        try:
+                            im /= np.max(im)
+                        except Exception as e:
+                            print('Image max of 0')
                     # add axis and concatenate to target array
                     inputs = np.concatenate((inputs,ims[...,np.newaxis]),axis=0)
                     newmask = to_categorical(mask,self.numClasses+1)
