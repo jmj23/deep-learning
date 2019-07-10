@@ -1,35 +1,45 @@
 # pylint: disable=invalid-name
 # pylint: disable=bad-whitespace
 import os
-from os.path import join
+import sys
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from glob import glob
-import numpy as np
+from os.path import join
 
-from keras.optimizers import Adam
-from keras.losses import binary_crossentropy
+import GPUtil
+import numpy as np
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
+from keras.losses import binary_crossentropy
+from keras.optimizers import Adam
 from natsort import natsorted
 from sklearn.model_selection import train_test_split
 
 from DatagenClass import NumpyDataGenerator
 from ResNet_model import ResNet50
 
-import GPUtil
 if not 'DEVICE_ID' in locals():
     DEVICE_ID = GPUtil.getFirstAvailable()[0]
-    print('Using GPU',DEVICE_ID)
+    print('Using GPU', DEVICE_ID)
 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 
 # Datapaths
-datapath = os.path.expanduser(os.path.join(
+datapath = os.path.expanduser(join(
     '~', 'deep-learning', 'HCC', 'Data'))
 
 # parameters
 im_dims = (512, 512)
 batch_size = 8
-epochs = 1
+epochs = 10
+multi_process = True
 model_weight_path = 'HCC_classification_model_weights_v1.h5'
 val_split = .2
+
+# allow for command-line epochs argument
+if len(sys.argv)>1:
+    try:
+        epochs = int(sys.argv[1])
+    except Exception as e:
+        pass
 
 # Training and validation datagen parameters
 train_params = {'batch_size': batch_size,
@@ -112,20 +122,31 @@ val_gen = NumpyDataGenerator(val_files,
                              **val_params)
 
 # Setup model
-HCCmodel = ResNet50(input_shape=(512,512,9),classes=1)
+HCCmodel = ResNet50(input_shape=(512, 512, 9), classes=1)
 # compile
-HCCmodel.compile(Adam(), loss=binary_crossentropy)
+HCCmodel.compile(Adam(), loss=binary_crossentropy, metrics=['accuracy'])
 
+HCCmodel.summary()
 
 # Setup callbacks
-cb_check=ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=0,
+cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=0,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
-cb_plateau=ReduceLROnPlateau(
+cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=4, verbose=1)
 
 
 # Train model
+print('Starting training...')
 history = HCCmodel.fit_generator(generator=train_gen,
-                               epochs=epochs, use_multiprocessing=True,
-                               workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
-                               validation_data=val_gen)
+                                 epochs=epochs, use_multiprocessing=multi_process,
+                                 workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                                 validation_data=val_gen)
+score = HCCmodel.evaluate_generator(val_gen,verbose=1,use_multiprocessing=multi_process,workers=8)
+print('|------------------|')
+print('|----Results-------|')
+print('|------------------|')
+print()
+print('Accuracy of {:.02f}%'.format(100*score[1]))
+print()
+print('Done')
+
