@@ -28,7 +28,7 @@ datapath = os.path.expanduser(join(
 
 # parameters
 im_dims = (512, 512)
-batch_size = 8
+batch_size = 4
 epochs = 10
 multi_process = True
 model_weight_path = 'HCC_classification_model_weights_v1.h5'
@@ -124,7 +124,7 @@ val_gen = NumpyDataGenerator(val_files,
 # Setup model
 HCCmodel = ResNet50(input_shape=(512, 512, 9), classes=1)
 # compile
-HCCmodel.compile(Adam(), loss=binary_crossentropy, metrics=['accuracy'])
+HCCmodel.compile(Adam(lr=1e-4), loss=binary_crossentropy, metrics=['accuracy'])
 
 HCCmodel.summary()
 
@@ -132,7 +132,7 @@ HCCmodel.summary()
 cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=0,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
-    monitor='val_loss', factor=.5, patience=4, verbose=1)
+    monitor='val_loss', factor=.5, patience=2, verbose=1)
 
 
 # Train model
@@ -141,6 +141,7 @@ history = HCCmodel.fit_generator(generator=train_gen,
                                  epochs=epochs, use_multiprocessing=multi_process,
                                  workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                  validation_data=val_gen)
+print('Evaluating...')
 score = HCCmodel.evaluate_generator(val_gen,verbose=1,use_multiprocessing=multi_process,workers=8)
 print('|------------------|')
 print('|----Results-------|')
