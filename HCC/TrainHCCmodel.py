@@ -17,19 +17,25 @@ from sklearn.model_selection import train_test_split
 from DatagenClass import NumpyDataGenerator
 from ResNet_model import ResNet50
 
-if not 'DEVICE_ID' in locals():
-    DEVICE_ID = GPUtil.getFirstAvailable()[0]
-    print('Using GPU', DEVICE_ID)
-os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+try:
+    if not 'DEVICE_ID' in locals():
+            DEVICE_ID = GPUtil.getFirstAvailable()[0]
+            print('Using GPU',DEVICE_ID)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+except Exception as e:
+    print('No GPU available')
+    print('Using CPU')
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # Datapaths
 datapath = os.path.expanduser(join(
     '~', 'deep-learning', 'HCC', 'Data'))
 
 # parameters
-im_dims = (512, 512)
-batch_size = 4
-epochs = 10
+im_dims = (384, 384)
+n_channels = 9
+batch_size = 8
+epochs = 20
 multi_process = True
 model_weight_path = 'HCC_classification_model_weights_v1.h5'
 val_split = .2
@@ -44,7 +50,7 @@ if len(sys.argv)>1:
 # Training and validation datagen parameters
 train_params = {'batch_size': batch_size,
                 'dim': im_dims,
-                'n_channels': 9,
+                'n_channels': n_channels,
                 'shuffle': True,
                 'rotation_range': 10,
                 'width_shift_range': 0.1,
@@ -63,7 +69,7 @@ train_params = {'batch_size': batch_size,
 
 val_params = {'batch_size': batch_size,
               'dim': im_dims,
-              'n_channels': 9,
+              'n_channels': n_channels,
               'shuffle': True,
               'rotation_range': 0,
               'width_shift_range': 0.,
@@ -121,8 +127,10 @@ val_gen = NumpyDataGenerator(val_files,
                              val_dict,
                              **val_params)
 
+testX,testY = train_gen.__getitem__(0)
+
 # Setup model
-HCCmodel = ResNet50(input_shape=(512, 512, 9), classes=1)
+HCCmodel = ResNet50(input_shape=im_dims+(9,), classes=1)
 # compile
 HCCmodel.compile(Adam(lr=1e-4), loss=binary_crossentropy, metrics=['accuracy'])
 
@@ -132,7 +140,7 @@ HCCmodel.summary()
 cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=0,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
-    monitor='val_loss', factor=.5, patience=2, verbose=1)
+    monitor='val_loss', factor=.5, patience=3, verbose=1)
 
 
 # Train model
