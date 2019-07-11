@@ -1,3 +1,4 @@
+# pylint: disable=no-member
 "Doctring"
 import cv2
 import keras
@@ -93,7 +94,7 @@ class NumpyDataGenerator(keras.utils.Sequence):
         # Generate data
         for i, f in enumerate(list_files_temp):
             # load and resize image
-            im = np.load(f)
+            im = np.rollaxis(np.load(f),0,3)
             if im.shape[:2] != self.dim:
                 im_r = np.zeros(self.dim + (self.n_channels,))
                 for c in range(self.n_channels):
@@ -195,11 +196,6 @@ class NumpyDataGenerator(keras.utils.Sequence):
 
         flip_horizontal = (np.random.random() < 0.5) * self.horizontal_flip
         flip_vertical = (np.random.random() < 0.5) * self.vertical_flip
-
-        channel_shift_intensity = None
-        if self.channel_shift_range != 0:
-            channel_shift_intensity = np.random.uniform(-self.channel_shift_range,
-                                                        self.channel_shift_range)
 
         transform_parameters = {'theta': theta,
                                 'tx': tx,
