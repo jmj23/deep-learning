@@ -8,14 +8,15 @@ from os.path import join
 
 import GPUtil
 import numpy as np
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
+from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 from keras.losses import binary_crossentropy
 from keras.optimizers import Adam
+from keras.applications.inception_v3 import InceptionV3
 from natsort import natsorted
 from sklearn.model_selection import train_test_split
 
 from DatagenClass import NumpyDataGenerator
-from ResNet_model import ResNet50
+from HCC_Models import ResNet50, Inception_model
 
 try:
     if not 'DEVICE_ID' in locals():
@@ -36,7 +37,7 @@ im_dims = (384, 384)
 n_channels = 9
 batch_size = 8
 epochs = 20
-multi_process = True
+multi_process = False
 model_weight_path = 'HCC_classification_model_weights_v1.h5'
 val_split = .2
 
@@ -52,7 +53,7 @@ train_params = {'batch_size': batch_size,
                 'dim': im_dims,
                 'n_channels': n_channels,
                 'shuffle': True,
-                'rotation_range': 10,
+                'rotation_range': 5,
                 'width_shift_range': 0.1,
                 'height_shift_range': 0.1,
                 'brightness_range': None,
@@ -122,35 +123,43 @@ val_dict = dict([(f, val_labels[i]) for i, f in enumerate(val_files)])
 # Setup datagens
 train_gen = NumpyDataGenerator(train_files,
                                train_dict,
-                               **train_params)
+                               **val_params)
 val_gen = NumpyDataGenerator(val_files,
                              val_dict,
                              **val_params)
 
-testX,testY = train_gen.__getitem__(0)
-
 # Setup model
-HCCmodel = ResNet50(input_shape=im_dims+(9,), classes=1)
+# HCCmodel = ResNet50(input_shape=im_dims+(n_channels,), classes=1)
+HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
+
 # compile
-HCCmodel.compile(Adam(lr=1e-4), loss=binary_crossentropy, metrics=['accuracy'])
+HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
 
 HCCmodel.summary()
 
 # Setup callbacks
-cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=0,
+from time import time
+cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
+cb_tb = TensorBoard(log_dir='logs/{}'.format(time()),
+                    histogram_freq=1,batch_size=8,
+                    write_grads=True,
+                    write_graph=False)
 
 
 # Train model
 print('Starting training...')
 history = HCCmodel.fit_generator(generator=train_gen,
                                  epochs=epochs, use_multiprocessing=multi_process,
-                                 workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                                 workers=8, verbose=1, callbacks=[cb_check, cb_plateau, cb_tb],
                                  validation_data=val_gen)
+# Load best weights
+HCCmodel.load_weights(model_weight_path)
+
 print('Evaluating...')
-score = HCCmodel.evaluate_generator(val_gen,verbose=1,use_multiprocessing=multi_process,workers=8)
+score = HCCmodel.evaluate_generator(val_gen,verbose=1,use_multiprocessing=multi_process,workers=8,max_queue_size=16)
 print('|------------------|')
 print('|----Results-------|')
 print('|------------------|')
