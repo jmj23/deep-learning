@@ -2,26 +2,30 @@
 # pylint: disable=bad-whitespace
 import os
 import sys
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from glob import glob
 from os.path import join
+from time import time
 
 import GPUtil
 import numpy as np
+from keras.applications.inception_v3 import InceptionV3
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 from keras.losses import binary_crossentropy
 from keras.optimizers import Adam
-from keras.applications.inception_v3 import InceptionV3
 from natsort import natsorted
 from sklearn.model_selection import train_test_split
+from sklearn.utils import class_weight
 
 from DatagenClass import NumpyDataGenerator
-from HCC_Models import ResNet50, Inception_model
+from HCC_Models import Inception_model, ResNet50
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 try:
     if not 'DEVICE_ID' in locals():
-            DEVICE_ID = GPUtil.getFirstAvailable()[0]
-            print('Using GPU',DEVICE_ID)
+        DEVICE_ID = GPUtil.getFirstAvailable()[0]
+        print('Using GPU', DEVICE_ID)
     os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
 except Exception as e:
     print('No GPU available')
@@ -42,7 +46,7 @@ model_weight_path = 'HCC_classification_model_weights_v1.h5'
 val_split = .2
 
 # allow for command-line epochs argument
-if len(sys.argv)>1:
+if len(sys.argv) > 1:
     try:
         epochs = int(sys.argv[1])
     except Exception as e:
@@ -116,7 +120,13 @@ val_neg_labels = [0.] * len(val_neg_files)
 val_files = val_pos_files + val_neg_files
 val_labels = val_pos_labels + val_neg_labels
 
+#calculate class weights
+class_weights = class_weight.compute_class_weight('balanced',np.unique(train_labels),train_labels)
+class_weight_dict = dict(enumerate(class_weights))
+print('Class weights:')
+print(class_weight_dict)
 
+# generate label dicts
 train_dict = dict([(f, train_labels[i]) for i, f in enumerate(train_files)])
 val_dict = dict([(f, val_labels[i]) for i, f in enumerate(val_files)])
 
@@ -135,31 +145,30 @@ HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
 # compile
 HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
 
-HCCmodel.summary()
-
 # Setup callbacks
-from time import time
 cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 cb_tb = TensorBoard(log_dir='logs/{}'.format(time()),
-                    histogram_freq=1,batch_size=8,
-                    write_grads=True,
+                    histogram_freq=0, batch_size=8,
+                    write_grads=False,
                     write_graph=False)
 
 
 # Train model
 print('Starting training...')
 history = HCCmodel.fit_generator(generator=train_gen,
-                                 epochs=epochs, use_multiprocessing=multi_process,
+                                 epochs=epochs, class_weight=class_weight_dict,
+                                 use_multiprocessing=multi_process,
                                  workers=8, verbose=1, callbacks=[cb_check, cb_plateau, cb_tb],
                                  validation_data=val_gen)
 # Load best weights
 HCCmodel.load_weights(model_weight_path)
 
 print('Evaluating...')
-score = HCCmodel.evaluate_generator(val_gen,verbose=1,use_multiprocessing=multi_process,workers=8,max_queue_size=16)
+score = HCCmodel.evaluate_generator(
+    val_gen, verbose=1, use_multiprocessing=multi_process, workers=8, max_queue_size=16)
 print('|------------------|')
 print('|----Results-------|')
 print('|------------------|')
@@ -167,4 +176,3 @@ print()
 print('Accuracy of {:.02f}%'.format(100*score[1]))
 print()
 print('Done')
-
