@@ -109,10 +109,6 @@ class NumpyDataGenerator(keras.utils.Sequence):
 
             # store class label
             y[i] = self.labels[f]
-        # batch-wise normalization
-        X -= np.mean(X)
-        X /= np.std(X)
-
         return X, y
 
     def __len__(self):
