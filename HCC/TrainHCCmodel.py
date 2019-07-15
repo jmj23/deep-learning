@@ -1,5 +1,6 @@
 # pylint: disable=invalid-name
 # pylint: disable=bad-whitespace
+# pylint: disable=no-member
 import os
 import sys
 from glob import glob
@@ -11,7 +12,7 @@ import numpy as np
 from keras.applications.inception_v3 import InceptionV3
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 from keras.losses import binary_crossentropy
-from keras.optimizers import Adam
+from keras.optimizers import SGD, Adam
 from natsort import natsorted
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
@@ -19,7 +20,7 @@ from sklearn.utils import class_weight
 from DatagenClass import NumpyDataGenerator
 from HCC_Models import Inception_model, ResNet50
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 try:
@@ -37,12 +38,12 @@ datapath = os.path.expanduser(join(
     '~', 'deep-learning', 'HCC', 'Data'))
 
 # parameters
-im_dims = (384, 384)
+im_dims = (256, 256)
 n_channels = 9
 batch_size = 8
 epochs = 20
-multi_process = False
-model_weight_path = 'HCC_classification_model_weights_v1.h5'
+multi_process = True
+model_weight_path = 'HCC_classification_model_weights_{epoch:02d}-{val_loss:.4f}.h5'
 val_split = .2
 
 # allow for command-line epochs argument
@@ -57,17 +58,17 @@ train_params = {'batch_size': batch_size,
                 'dim': im_dims,
                 'n_channels': n_channels,
                 'shuffle': True,
-                'rotation_range': 5,
-                'width_shift_range': 0.1,
-                'height_shift_range': 0.1,
+                'rotation_range': 0.,
+                'width_shift_range': 0.0,
+                'height_shift_range': 0.0,
                 'brightness_range': None,
                 'shear_range': 0.,
-                'zoom_range': 0.1,
+                'zoom_range': 0.0,
                 'channel_shift_range': 0.,
                 'fill_mode': 'constant',
                 'cval': 0.,
-                'horizontal_flip': True,
-                'vertical_flip': True,
+                'horizontal_flip': False,
+                'vertical_flip': False,
                 'rescale': None,
                 'preprocessing_function': None,
                 'interpolation_order': 1}
@@ -143,7 +144,8 @@ val_gen = NumpyDataGenerator(val_files,
 HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
 
 # compile
-HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
+# HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
+HCCmodel.compile(SGD(lr=1e-2,momentum=.9),loss=binary_crossentropy,metrics=['accuracy'])
 
 # Setup callbacks
 cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=1,
