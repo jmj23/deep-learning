@@ -23,6 +23,7 @@ class NumpyDataGenerator(keras.utils.Sequence):
                  batch_size=32,
                  dim=(256, 256),
                  n_channels=1,
+                 incl_channels = None,
                  shuffle=True,
                  rotation_range=0,
                  width_shift_range=0.,
@@ -44,7 +45,10 @@ class NumpyDataGenerator(keras.utils.Sequence):
         self.batch_size = batch_size
         self.labels = labels
         self.list_IDs = file_list
+        if incl_channels is not None:
+            assert n_channels == len(incl_channels)
         self.n_channels = n_channels
+        self.incl_channels = incl_channels
         self.shuffle = shuffle
 
         # augmentation parameters
@@ -95,6 +99,9 @@ class NumpyDataGenerator(keras.utils.Sequence):
         for i, f in enumerate(list_files_temp):
             # load and resize image
             im = np.rollaxis(np.load(f),0,3)
+            # select desired channels, if set
+            if self.incl_channels is not None:
+                im = im[...,self.incl_channels]
             if im.shape[:2] != self.dim:
                 im_r = np.zeros(self.dim + (self.n_channels,))
                 for c in range(self.n_channels):
