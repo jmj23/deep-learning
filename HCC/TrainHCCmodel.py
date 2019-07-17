@@ -17,10 +17,14 @@ from natsort import natsorted
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
+from tensorflow.python.util import deprecation
+deprecation._PRINT_DEPRECATION_WARNINGS = False
+
 from DatagenClass import NumpyDataGenerator
 from HCC_Models import Inception_model, ResNet50
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
 
 try:
@@ -39,12 +43,18 @@ datapath = os.path.expanduser(join(
 
 # parameters
 im_dims = (256, 256)
-n_channels = 9
-batch_size = 8
-epochs = 20
+n_channels = 3
+incl_channels = [3,4,5]
+batch_size = 16
+epochs = 5
 multi_process = True
-model_weight_path = 'HCC_classification_model_weights_{epoch:02d}-{val_loss:.4f}.h5'
+model_weight_path = 'HCC_classification_model_weights_{epoch:02d}-{val_acc:.4f}.h5'
+best_weights_file = 'HCC_best_model_weights.h5'
 val_split = .2
+
+# RESUME if needed
+resume = True
+# resume = False
 
 # allow for command-line epochs argument
 if len(sys.argv) > 1:
@@ -57,6 +67,7 @@ if len(sys.argv) > 1:
 train_params = {'batch_size': batch_size,
                 'dim': im_dims,
                 'n_channels': n_channels,
+                'incl_channels' : incl_channels,
                 'shuffle': True,
                 'rotation_range': 0.,
                 'width_shift_range': 0.0,
@@ -76,6 +87,7 @@ train_params = {'batch_size': batch_size,
 val_params = {'batch_size': batch_size,
               'dim': im_dims,
               'n_channels': n_channels,
+              'incl_channels' : incl_channels,
               'shuffle': True,
               'rotation_range': 0,
               'width_shift_range': 0.,
@@ -100,7 +112,7 @@ neg_files = natsorted(glob(join(neg_dir, '*.npy')))
 # Get subject list
 pos_subjs = set([s[-13:-8] for s in pos_files])
 neg_subjs = set([s[-13:-8] for s in neg_files])
-subj_list = list(pos_subjs.union(neg_subjs))
+subj_list = natsorted(list(pos_subjs.union(neg_subjs)))
 
 # split subjects into train/val sets
 rng = np.random.RandomState(seed=1)
@@ -144,8 +156,14 @@ val_gen = NumpyDataGenerator(val_files,
 HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
 
 # compile
-# HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
-HCCmodel.compile(SGD(lr=1e-4,momentum=.8),loss=binary_crossentropy,metrics=['accuracy'])
+HCCmodel.compile(Adam(lr=1e-4), loss=binary_crossentropy, metrics=['accuracy'])
+# HCCmodel.compile(SGD(lr=1e-5,momentum=.8),loss=binary_crossentropy,metrics=['accuracy'])
+
+if resume:
+    h5files = glob('*.h5')
+    load_file = max(h5files, key=os.path.getctime)
+    print('Resuming from {}'.format(load_file))
+    HCCmodel.load_weights(load_file)
 
 # Setup callbacks
 cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=1,
@@ -165,16 +183,35 @@ history = HCCmodel.fit_generator(generator=train_gen,
                                  use_multiprocessing=multi_process,
                                  workers=8, verbose=1, callbacks=[cb_check, cb_plateau, cb_tb],
                                  validation_data=val_gen)
-# Load best weights
-HCCmodel.load_weights(model_weight_path)
+# Rename best weights
+h5files = glob('*.h5')
+load_file = max(h5files, key=os.path.getctime)
+os.rename(load_file, best_weights_file)
+print('Renamed {} to {}'.format(load_file,best_weights_file))
 
-print('Evaluating...')
-score = HCCmodel.evaluate_generator(
-    val_gen, verbose=1, use_multiprocessing=multi_process, workers=8, max_queue_size=16)
-print('|------------------|')
-print('|----Results-------|')
-print('|------------------|')
-print()
-print('Accuracy of {:.02f}%'.format(100*score[1]))
-print()
-print('Done')
+# Load best weights
+HCCmodel.load_weights(best_weights_file)
+
+print('Calculating classification confusion matrix...')
+val_gen.shuffle = False
+preds = HCCmodel.predict_generator(val_gen,verbose=1)
+labels = [val_gen.labels[f] for f in val_gen.list_IDs]
+y_pred = np.rint(preds)
+totalNum = len(y_pred)
+y_true = np.rint(labels)[:totalNum]
+from sklearn.metrics import confusion_matrix
+tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+print('----------------------')
+print('Classification Results')
+print('----------------------')
+print('True positives: {}'.format(tp))
+print('True negatives: {}'.format(tn))
+print('False positives: {}'.format(fp))
+print('False negatives: {}'.format(fn))
+print('% Positive: {:.02f}'.format(100*(tp+fp)/totalNum))
+print('% Negative: {:.02f}'.format(100*(tn+fn)/totalNum))
+print('% Sensitivity: {:.02f}'.format(100*(tp)/(tp+fn)))
+print('% Specificity: {:.02f}'.format(100*(tn)/(tn+fn)))
+print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
+print('-----------------------')
