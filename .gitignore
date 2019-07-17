@@ -89,3 +89,4 @@ TB_Graph/events.out.tfevents.1507237738.r-aliengpu
 mnist/t10k-images-idx3-ubyte.gz
 mnist/t10k-labels-idx1-ubyte.gz
 mnist/train-images-idx3-ubyte.gz
+HCC/logs/
