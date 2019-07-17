@@ -17,9 +17,6 @@ from natsort import natsorted
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
-from tensorflow.python.util import deprecation
-deprecation._PRINT_DEPRECATION_WARNINGS = False
-
 from DatagenClass import NumpyDataGenerator
 from HCC_Models import Inception_model, ResNet50
 
