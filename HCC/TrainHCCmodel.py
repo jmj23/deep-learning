@@ -145,13 +145,13 @@ HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
 
 # compile
 # HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
-HCCmodel.compile(SGD(lr=1e-2,momentum=.9),loss=binary_crossentropy,metrics=['accuracy'])
+HCCmodel.compile(SGD(lr=1e-4,momentum=.8),loss=binary_crossentropy,metrics=['accuracy'])
 
 # Setup callbacks
 cb_check = ModelCheckpoint(model_weight_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
-    monitor='val_loss', factor=.5, patience=3, verbose=1)
+    monitor='val_loss', factor=.5, patience=5, verbose=1)
 cb_tb = TensorBoard(log_dir='logs/{}'.format(time()),
                     histogram_freq=0, batch_size=8,
                     write_grads=False,
