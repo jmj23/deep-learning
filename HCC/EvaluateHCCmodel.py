@@ -33,7 +33,7 @@ datapath = os.path.expanduser(join(
     '~', 'deep-learning', 'HCC', 'Data'))
 
 # parameters
-im_dims = (384, 384)
+im_dims = (512, 512)
 n_channels = 9
 batch_size = 8
 epochs = 20
