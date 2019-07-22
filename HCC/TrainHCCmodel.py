@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # parameters
     im_dims = (256, 256)
-    incl_channels = [3, 4, 5]
+    incl_channels = [3, 4, 5, 6]
     n_channels = len(incl_channels)
     batch_size = 8
     epochs = 5
@@ -67,11 +67,11 @@ if __name__ == "__main__":
                     'n_channels': n_channels,
                     'incl_channels': incl_channels,
                     'shuffle': True,
-                    'rotation_range': 10,
-                    'width_shift_range': 0.1,
-                    'height_shift_range': 0.1,
+                    'rotation_range': 15,
+                    'width_shift_range': 0.2,
+                    'height_shift_range': 0.2,
                     'brightness_range': None,
-                    'shear_range': 0.,
+                    'shear_range': 0.1,
                     'zoom_range': 0.2,
                     'channel_shift_range': 0.,
                     'fill_mode': 'constant',
@@ -157,13 +157,13 @@ if __name__ == "__main__":
     # HCCmodel = ResNet50(input_shape=im_dims+(n_channels,), classes=1)
     # HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
     HCCmodel = BlockModel_Classifier(
-        im_dims+(n_channels,), filt_num=8, numBlocks=5)
+        im_dims+(n_channels,), filt_num=8, numBlocks=6)
     HCCmodel.summary()
 
     # compile
-    # HCCmodel.compile(Adam(lr=1e-4), loss=binary_crossentropy,
-    #                  metrics=['accuracy'])
-    HCCmodel.compile(SGD(lr=1e-5,momentum=.8),loss=binary_crossentropy,metrics=['accuracy'])
+    HCCmodel.compile(Adam(lr=1e-5), loss=binary_crossentropy,
+                     metrics=['accuracy'])
+    # HCCmodel.compile(SGD(lr=1e-5,momentum=.8),loss=binary_crossentropy,metrics=['accuracy'])
 
     if resume:
         HCCmodel.load_weights(best_weights_file)
@@ -219,3 +219,8 @@ if __name__ == "__main__":
     print('% Specificity: {:.02f}'.format(100*(tn)/(tn+fn)))
     print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
     print('-----------------------')
+
+    with open('val_results.txt', 'w') as f:
+        for i,j in zip(val_gen.list_IDs[:totalNum],preds[:,0]):
+            f.write("{}-{:.04f}\n".format(i,j))
+    print('Wrote validation results to file')

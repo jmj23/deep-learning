@@ -16,6 +16,7 @@ from keras.losses import binary_crossentropy
 from keras.optimizers import SGD, Adam
 from matplotlib import pyplot as plt
 from natsort import natsorted
+from natsort import index_natsorted, order_by_index
 from sklearn.metrics import auc, confusion_matrix, roc_curve
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
@@ -44,9 +45,9 @@ datapath = join('D:\\', 'jmj136', 'HCCdata')
 
 # parameters
 im_dims = (256, 256)
-n_channels = 3
-incl_channels = [3, 4, 5]
-batch_size = 16
+n_channels = 4
+incl_channels = [3, 4, 5, 6]
+batch_size = 8
 # best_weights_file = 'HCC_best_model_weights.h5'
 best_weights_file = 'HCC_best_model_weights_blockmodel.h5'
 val_split = .2
@@ -93,6 +94,9 @@ val_neg_labels = [0.] * len(val_neg_files)
 val_files = val_pos_files + val_neg_files
 val_labels = val_pos_labels + val_neg_labels
 
+index = index_natsorted(val_files)
+val_files = order_by_index(val_files, index)
+val_labels = order_by_index(val_labels, index)
 
 # generate label dicts
 val_dict = dict([(f, val_labels[i]) for i, f in enumerate(val_files)])
@@ -106,7 +110,7 @@ val_gen = NumpyDataGenerator(val_files,
 # HCCmodel = ResNet50(input_shape=im_dims+(n_channels,), classes=1)
 HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
 HCCmodel = BlockModel_Classifier(
-        im_dims+(n_channels,), filt_num=8, numBlocks=5)
+        im_dims+(n_channels,), filt_num=8, numBlocks=6)
 
 # Load best weights
 HCCmodel.load_weights(best_weights_file)
@@ -119,6 +123,13 @@ y_pred = np.rint(preds)
 totalNum = len(y_pred)
 y_true = np.rint(labels)[:totalNum]
 tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+
+with open('val_results_eval.txt', 'w') as f:
+    for i,j in zip(val_gen.list_IDs[:totalNum],preds[:,0]):
+        f.write("{}-{:.04f}\n".format(i,j))
+print('Wrote validation results to file')
+
 
 print('----------------------')
 print('Classification Results')
@@ -152,15 +163,13 @@ plt.show()
 
 
 # Get and display predictions
-valX, valY = val_gen.__getitem__(0)
-
-preds = HCCmodel.predict_on_batch(valX)
-
-
-for ind in range(valX.shape[0]):
-    cur_im = valX[ind]
+for ind in range(2):
+    b_ind = np.random.randint(0,len(val_gen))
+    valX, valY = val_gen.__getitem__(b_ind)
+    preds = HCCmodel.predict_on_batch(valX)
+    cur_im = valX[0]
     disp_im = np.concatenate([cur_im[..., c]
                               for c in range(cur_im.shape[-1])], axis=1)
     plt.imshow(disp_im, cmap='gray')
-    plt.title('Predicted: {} Actual: {}'.format(preds[ind], valY[ind]))
+    plt.title('Predicted: {} Actual: {}'.format(preds[0], valY[0]))
     plt.show()

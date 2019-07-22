@@ -10,6 +10,7 @@ from keras.layers import (ELU, Activation, Add, AveragePooling2D,
                           GlobalAveragePooling2D, Input, MaxPooling2D,
                           ZeroPadding2D, concatenate)
 from keras.models import Model
+from keras.regularizers import l2
 
 # from resnet_utils import *
 
@@ -234,7 +235,10 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     # calculate size reduction
     startsize = np.max(input_shape[0:2])
     minsize = (startsize-np.sum(2**np.arange(1, numBlocks+1)))/2**numBlocks
-    assert minsize > 4, "Too small of input for this many blocks. Use fewer blocks or larger input"
+    assert minsize > 2, "Too small of input for this many blocks. Use fewer blocks or larger input"
+
+    # set l2 regularization parameter
+    l2reg = 2e-4
 
     # input layer
     lay_input = Input(shape=input_shape, name='input_layer')
@@ -242,40 +246,40 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     # contracting blocks
     x = lay_input
     for rr in range(1, numBlocks+1):
-        x1 = Conv2D(filt_num*rr, (1, 1), padding='same',
-                    name='Conv1_{}'.format(rr))(x)
+        x1 = Conv2D(filt_num*(2**(rr-1)), (1, 1), padding='same',
+                    name='Conv1_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
         x1 = BatchNormalization()(x1)
         x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
-        x3 = Conv2D(filt_num*rr, (3, 3), padding='same',
-                    name='Conv3_{}'.format(rr))(x)
+        x3 = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
+                    name='Conv3_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
         x3 = BatchNormalization()(x3)
         x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
-        x51 = Conv2D(filt_num*rr, (3, 3), padding='same',
-                     name='Conv51_{}'.format(rr))(x)
+        x51 = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
+                     name='Conv51_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
         x51 = BatchNormalization()(x51)
         x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
-        x52 = Conv2D(filt_num*rr, (3, 3), padding='same',
-                     name='Conv52_{}'.format(rr))(x51)
+        x52 = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
+                     name='Conv52_{}'.format(rr), kernel_regularizer=l2(l2reg))(x51)
         x52 = BatchNormalization()(x52)
         x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
         x = concatenate([x1, x3, x52], name='merge_{}'.format(rr))
-        x = Conv2D(filt_num*rr, (1, 1), padding='valid',
-                   name='ConvAll_{}'.format(rr))(x)
+        x = Conv2D(filt_num*(2**(rr-1)), (1, 1), padding='valid',
+                   name='ConvAll_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
         x = BatchNormalization()(x)
         x = ELU(name='elu_all_{}'.format(rr))(x)
         x = ZeroPadding2D(padding=(1, 1), name='PrePad_{}'.format(rr))(x)
-        x = Conv2D(filt_num*rr, (4, 4), padding='valid',
-                   strides=(2, 2), name='DownSample_{}'.format(rr))(x)
+        x = Conv2D(filt_num*(2**(rr-1)), (4, 4), padding='valid',
+                   strides=(2, 2), name='DownSample_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
         x = BatchNormalization()(x)
         x = ELU(name='elu_downsample_{}'.format(rr))(x)
-        x = Conv2D(filt_num*rr, (3, 3), padding='same',
-                   name='ConvClean_{}'.format(rr))(x)
+        x = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
+                   name='ConvClean_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
         x = BatchNormalization()(x)
         x = ELU(name='elu_skip_{}'.format(rr))(x)
 
     # average pooling
     x = GlobalAveragePooling2D()(x)
     # classifier
-    lay_out = Dense(1, activation='sigmoid', name='output_layer')(x)
+    lay_out = Dense(1, activation='sigmoid', name='output_layer', kernel_regularizer=l2(1e-3))(x)
 
     return Model(lay_input, lay_out)

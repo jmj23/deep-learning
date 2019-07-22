@@ -11,17 +11,21 @@ from sklearn.model_selection import train_test_split
 from vis.utils import utils
 from vis.visualization import visualize_cam, visualize_saliency
 
-from ResNet_model import ResNet50
+from HCC_Models import Inception_model, ResNet50, BlockModel_Classifier
 
 # Datapaths
-datapath = os.path.expanduser(join(
-    '~', 'deep-learning', 'HCC', 'Data'))
+# datapath = os.path.expanduser(join(
+#     '~', 'deep-learning', 'HCC', 'Data'))
+datapath = join('D:\\', 'jmj136', 'HCCdata')
 
 # parameters
-im_dims = (384, 384)
+im_dims = (256, 256)
 batch_size = 8
 multi_process = True
-model_weight_path = 'HCC_classification_model_weights_v1.h5'
+n_channels = 3
+incl_channels = [3, 4, 5]
+# best_weights_file = 'HCC_best_model_weights.h5'
+best_weights_file = 'HCC_best_model_weights_blockmodel.h5'
 val_split = .2
 
 # Data loading
@@ -56,10 +60,13 @@ val_labels = val_pos_labels + val_neg_labels
 
 
 # Setup model
-HCCmodel = ResNet50(input_shape=im_dims+(9,), classes=1)
+# HCCmodel = ResNet50(input_shape=im_dims+(n_channels,), classes=1)
+HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
+HCCmodel = BlockModel_Classifier(
+        im_dims+(n_channels,), filt_num=8, numBlocks=5)
 
 # get layer index
-layer_idx = utils.find_layer_idx(HCCmodel, 'fc1')
+layer_idx = utils.find_layer_idx(HCCmodel, 'output_layer')
 # swap activation
 HCCmodel.layers[layer_idx].activation = activations.linear
 HCC = utils.apply_modifications(HCCmodel)
