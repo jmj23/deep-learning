@@ -14,17 +14,17 @@ from keras.applications.inception_v3 import InceptionV3
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 from keras.losses import binary_crossentropy
 from keras.optimizers import SGD, Adam
+from matplotlib import pyplot as plt
 from natsort import natsorted
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import auc, confusion_matrix, roc_curve
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
 from DatagenClass import NumpyDataGenerator
-from HCC_Models import Inception_model, ResNet50
+from HCC_Models import Inception_model, ResNet50, BlockModel_Classifier
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
-
 
 
 try:
@@ -38,23 +38,23 @@ except Exception as e:
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # Datapaths
-datapath = os.path.expanduser(join(
-    '~', 'deep-learning', 'HCC', 'Data'))
+# datapath = os.path.expanduser(join(
+    # '~', 'deep-learning', 'HCC', 'Data'))
+datapath = join('D:\\', 'jmj136', 'HCCdata')
 
 # parameters
 im_dims = (256, 256)
 n_channels = 3
-incl_channels = [3,4,5]
+incl_channels = [3, 4, 5]
 batch_size = 16
-epochs = 5
-multi_process = True
-best_weights_file = 'HCC_best_model_weights.h5'
+# best_weights_file = 'HCC_best_model_weights.h5'
+best_weights_file = 'HCC_best_model_weights_blockmodel.h5'
 val_split = .2
 
 val_params = {'batch_size': batch_size,
               'dim': im_dims,
               'n_channels': n_channels,
-              'incl_channels' : incl_channels,
+              'incl_channels': incl_channels,
               'shuffle': False,
               'rotation_range': 0,
               'width_shift_range': 0.,
@@ -105,13 +105,15 @@ val_gen = NumpyDataGenerator(val_files,
 # Setup model
 # HCCmodel = ResNet50(input_shape=im_dims+(n_channels,), classes=1)
 HCCmodel = Inception_model(input_shape=im_dims+(n_channels,))
+HCCmodel = BlockModel_Classifier(
+        im_dims+(n_channels,), filt_num=8, numBlocks=5)
 
 # Load best weights
 HCCmodel.load_weights(best_weights_file)
 
 print('Calculating classification confusion matrix...')
 val_gen.shuffle = False
-preds = HCCmodel.predict_generator(val_gen,verbose=1)
+preds = HCCmodel.predict_generator(val_gen, verbose=1)
 labels = [val_gen.labels[f] for f in val_gen.list_IDs]
 y_pred = np.rint(preds)
 totalNum = len(y_pred)
@@ -131,3 +133,34 @@ print('% Sensitivity: {:.02f}'.format(100*(tp)/(tp+fn)))
 print('% Specificity: {:.02f}'.format(100*(tn)/(tn+fn)))
 print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
 print('-----------------------')
+
+# Make ROC curve
+fpr, tpr, thresholds = roc_curve(y_true, preds, pos_label=1)
+roc_auc = auc(fpr, tpr)
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = {:0.2f})'.format(roc_auc))
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
+
+
+# Get and display predictions
+valX, valY = val_gen.__getitem__(0)
+
+preds = HCCmodel.predict_on_batch(valX)
+
+
+for ind in range(valX.shape[0]):
+    cur_im = valX[ind]
+    disp_im = np.concatenate([cur_im[..., c]
+                              for c in range(cur_im.shape[-1])], axis=1)
+    plt.imshow(disp_im, cmap='gray')
+    plt.title('Predicted: {} Actual: {}'.format(preds[ind], valY[ind]))
+    plt.show()
