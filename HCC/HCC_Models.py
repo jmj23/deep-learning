@@ -3,7 +3,9 @@
 # pylint: disable=trailing-whitespace
 import keras.backend as K
 import numpy as np
+from keras import backend as K
 from keras.applications.inception_v3 import InceptionV3
+from keras.callbacks import Callback
 from keras.initializers import glorot_uniform
 from keras.layers import (ELU, Activation, Add, AveragePooling2D,
                           BatchNormalization, Conv2D, Dense, Flatten,
