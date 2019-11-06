@@ -17,7 +17,6 @@ from keras.regularizers import l2
 # from resnet_utils import *
 
 K.set_image_data_format('channels_last')
-K.set_learning_phase(1)
 
 
 def identity_block(X, f, filters, stage, block):
@@ -229,18 +228,15 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     to match up properly
     """
 
-    # check for input shape compatibility
-    rows, cols = input_shape[0:2]
-    assert rows % 2**numBlocks == 0, "Input rows and number of blocks are incompatible"
-    assert cols % 2**numBlocks == 0, "Input cols and number of blocks are incompatible"
-
     # calculate size reduction
     startsize = np.max(input_shape[0:2])
     minsize = (startsize-np.sum(2**np.arange(1, numBlocks+1)))/2**numBlocks
     assert minsize > 2, "Too small of input for this many blocks. Use fewer blocks or larger input"
 
     # set l2 regularization parameter
-    l2reg = 2e-4
+    l2reg = 1e-2
+    # whether to use batchnorm
+    use_bn = False
 
     # input layer
     lay_input = Input(shape=input_shape, name='input_layer')
@@ -250,38 +246,63 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     for rr in range(1, numBlocks+1):
         x1 = Conv2D(filt_num*(2**(rr-1)), (1, 1), padding='same',
                     name='Conv1_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
-        x1 = BatchNormalization()(x1)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
         x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
         x3 = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
                     name='Conv3_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
-        x3 = BatchNormalization()(x3)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
         x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
         x51 = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
                      name='Conv51_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
-        x51 = BatchNormalization()(x51)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
         x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
         x52 = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
                      name='Conv52_{}'.format(rr), kernel_regularizer=l2(l2reg))(x51)
-        x52 = BatchNormalization()(x52)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
         x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
         x = concatenate([x1, x3, x52], name='merge_{}'.format(rr))
         x = Conv2D(filt_num*(2**(rr-1)), (1, 1), padding='valid',
                    name='ConvAll_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_all_{}'.format(rr))(x)
-        x = ZeroPadding2D(padding=(1, 1), name='PrePad_{}'.format(rr))(x)
         x = Conv2D(filt_num*(2**(rr-1)), (4, 4), padding='valid',
                    strides=(2, 2), name='DownSample_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_downsample_{}'.format(rr))(x)
         x = Conv2D(filt_num*(2**(rr-1)), (3, 3), padding='same',
                    name='ConvClean_{}'.format(rr), kernel_regularizer=l2(l2reg))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_skip_{}'.format(rr))(x)
 
     # average pooling
-    x = GlobalAveragePooling2D()(x)
+    x = Flatten()(x)
     # classifier
     lay_out = Dense(1, activation='sigmoid', name='output_layer', kernel_regularizer=l2(1e-3))(x)
 
     return Model(lay_input, lay_out)
+
+
+def SmallModel(input_shape):
+    # input layer
+    lay_input = Input(shape=input_shape, name='input_layer')
+
+    # contracting blocks
+    x = lay_input
+    x = Conv2D(8,(3,3))(x)
+    x = ELU()(x)
+    x = Conv2D(16,(3,3),strides=(2,2))
+    x = ELU()(x)
+    x = Conv2D(16,(3,3),strides=(2,2))
+    x = ELU()(x)
+    x = Conv2D(16,(3,3),strides=(2,2))
+    x = ELU()(x)
+    x = Flatten()(x)
+    x = Dense(1,activation='sigmoid')(x)
+    return Model(lay_input,x)
