@@ -46,9 +46,10 @@ except Exception as e:
 datapath = join('D:\\', 'jmj136', 'HCCdata')
 
 # parameters
-im_dims = (256, 256)
-incl_channels = ['T1p','T1a','T1v']
-# incl_channels = ['Inp','Out','T2f','T1p','T1a','T1v','T1d','Dw1','Dw2']
+randseed = 2
+im_dims = (384, 384)
+# incl_channels = ['T1p','T1a','T1v']
+incl_channels = ['Inp','Out','T2f','T1p','T1a','T1v','T1d','Dw1','Dw2']
 n_channels = len(incl_channels)
 batch_size = 8
 # best_weights_file = 'HCC_best_model_weights.h5'
@@ -58,7 +59,7 @@ best_weights_file = 'HCC_best_model_weights_blockmodel.h5'
 pos_dir = join(datapath, 'Positive')
 neg_dir = join(datapath, 'Negative')
 
-x_val, y_val = LoadValData(pos_dir,neg_dir,im_dims,incl_channels)
+x_val, y_val = LoadValData(pos_dir,neg_dir,im_dims,incl_channels, randseed)
 
 # Setup model
 # HCCmodel = ResNet50(input_shape=im_dims+(n_channels,), classes=1)
@@ -108,7 +109,7 @@ plt.show()
 
 
 # Get and display predictions
-for ind in range(20):
+for ind in range(2):
     b_ind = np.random.randint(0,x_val.shape[0])
     cur_im = x_val[b_ind,...]
     cur_pred = preds[b_ind]
