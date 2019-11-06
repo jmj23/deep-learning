@@ -1,8 +1,10 @@
 from glob import glob
 from os.path import join
+from tqdm.auto import tqdm
 
 import cv2
 import keras.backend as K
+import tensorflow as tf
 import numpy as np
 from keras.callbacks import Callback
 from natsort import natsorted
@@ -12,6 +14,12 @@ from sklearn.utils import class_weight
 
 from DatagenClass import NumpyDataGenerator, PngDataGenerator
 
+def focal_loss(gamma=2., alpha=.25):
+	def focal_loss_fixed(y_true, y_pred):
+		pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
+		pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
+		return -K.mean(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) - K.mean((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
+	return focal_loss_fixed
 
 class CyclicLR(Callback):
     """This callback implements a cyclical learning rate policy (CLR).
@@ -164,7 +172,7 @@ class CyclicLR(Callback):
         logs['lr'] = K.get_value(self.model.optimizer.lr)
 
 
-def GetDatagens(pos_dir, neg_dir, batch_size, im_dims, incl_channels):
+def GetDatagens(pos_dir, neg_dir, batch_size, im_dims, incl_channels,randseed=1):
     val_split = .2
     # Training and validation datagen parameters
     train_params = {'batch_size': batch_size,
@@ -173,15 +181,15 @@ def GetDatagens(pos_dir, neg_dir, batch_size, im_dims, incl_channels):
                     'incl_channels': incl_channels,
                     'shuffle': True,
                     'rotation_range': 15,
-                    'width_shift_range': 0.2,
-                    'height_shift_range': 0.2,
+                    'width_shift_range': 0.1,
+                    'height_shift_range': 0.1,
                     'brightness_range': None,
-                    'shear_range': 0.1,
-                    'zoom_range': 0.2,
+                    'shear_range': 0.05,
+                    'zoom_range': 0.1,
                     'channel_shift_range': 0.,
                     'fill_mode': 'constant',
                     'cval': 0.,
-                    'horizontal_flip': True,
+                    'horizontal_flip': False,
                     'vertical_flip': False,
                     'rescale': None,
                     'preprocessing_function': None,
@@ -219,7 +227,7 @@ def GetDatagens(pos_dir, neg_dir, batch_size, im_dims, incl_channels):
     neg_subjs = natsorted(list(set([s[-9:-5] for s in neg_slices])))
 
     # split subjects into train/val sets
-    rng = np.random.RandomState(seed=1)
+    rng = np.random.RandomState(seed=randseed)
     train_pos_subjs, val_pos_subjs = train_test_split(
         pos_subjs, test_size=val_split, random_state=rng)
     train_neg_subjs, val_neg_subjs = train_test_split(
@@ -277,7 +285,7 @@ def LoadSlice(file_root,dims,incl_channels):
         x[...,s] = im
     return x
 
-def LoadValData(pos_dir,neg_dir,dims,incl_channels):
+def LoadValData(pos_dir,neg_dir,dims,incl_channels,randseed=1):
     val_split = .2
     # Get list of files
     pos_files = natsorted(glob(join(pos_dir, '*.png')))
@@ -291,19 +299,21 @@ def LoadValData(pos_dir,neg_dir,dims,incl_channels):
     neg_subjs = natsorted(list(set([s[-9:-5] for s in neg_slices])))
 
     # split subjects into train/val sets
-    rng = np.random.RandomState(seed=1)
+    rng = np.random.RandomState(seed=randseed)
     _, val_pos_subjs = train_test_split(
         pos_subjs, test_size=val_split, random_state=rng)
     _, val_neg_subjs = train_test_split(
         neg_subjs, test_size=val_split, random_state=rng)
-
+    
     pos_roots = [f for f in pos_slices if any(
         [s in f for s in val_pos_subjs])]
     neg_roots = [f for f in neg_slices if any(
         [s in f for s in val_neg_subjs])]
 
-    pos_x = np.stack([LoadSlice(f,dims,incl_channels) for f in pos_roots])
-    neg_x = np.stack([LoadSlice(f,dims,incl_channels) for f in neg_roots])
+    tqdm.write('Loding positive data...')
+    pos_x = np.stack([LoadSlice(f,dims,incl_channels) for f in tqdm(pos_roots)])
+    tqdm.write('Loding negative data...')
+    neg_x = np.stack([LoadSlice(f,dims,incl_channels) for f in tqdm(neg_roots)])
 
     labels = [1.]*pos_x.shape[0] + [0.]*neg_x.shape[0]
     y_val = np.array(labels)
