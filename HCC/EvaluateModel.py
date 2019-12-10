@@ -108,6 +108,7 @@ plt.ylabel('True Positive Rate')
 plt.title('Receiver operating characteristic for HCC')
 plt.legend(loc="lower right")
 plt.show()
+plt.savefig('HCC_ROC.png')
 
 
 # Get and display predictions
