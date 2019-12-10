@@ -49,11 +49,13 @@ datapath = join('D:\\', 'jmj136', 'HCCdata')
 randseed = 2
 im_dims = (384, 384)
 # incl_channels = ['T1p','T1a','T1v']
-incl_channels = ['Inp','Out','T2f','T1p','T1a','T1v','T1d','Dw1','Dw2']
+incl_channels = ['Inp','Out','T2f','T1p','T1a','T1v','T1d']
 n_channels = len(incl_channels)
 batch_size = 8
+
+model_weight_path = 'HCC_weights_{}_channels_v1.h5'.format(n_channels)
 # best_weights_file = 'HCC_best_model_weights.h5'
-best_weights_file = 'HCC_best_model_weights_blockmodel.h5'
+# best_weights_file = 'HCC_best_model_weights_blockmodel.h5'
 
  # Get datagens
 pos_dir = join(datapath, 'Positive')
@@ -68,7 +70,7 @@ HCCmodel = BlockModel_Classifier(
         im_dims+(n_channels,), filt_num=8, numBlocks=6)
 
 # Load best weights
-HCCmodel.load_weights(best_weights_file)
+HCCmodel.load_weights(model_weight_path)
 
 print('Calculating classification confusion matrix...')
 preds = HCCmodel.predict(x_val,batch_size=batch_size, verbose=1)
