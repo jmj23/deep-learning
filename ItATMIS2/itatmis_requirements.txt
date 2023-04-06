@@ -10,7 +10,7 @@ configparser
 nibabel
 natsort
 keras==2.2.4
-tensorflow-gpu==1.14
+tensorflow-gpu==1.14    # install this with conda
 h5py
 scipy
 ## Requirements with version specifiers ##
