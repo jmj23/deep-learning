@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1,'/home/jmj136/deep-learning/Utils')
+sys.path.insert(1,'/home/jj18/Code/deep-learning/Utils')
 from PyQt5 import QtWidgets, QtCore, uic
 from PyQt5.QtCore import pyqtProperty,pyqtSignal, QThread, Qt
 from PyQt5.QtGui import QCursor, QFont
@@ -48,7 +48,7 @@ from keras.utils.np_utils import to_categorical
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
-os.chdir('/home/jmj136/deep-learning/ItATMIS2')
+os.chdir('/home/jj18/Code/deep-learning/ItATMIS2')
 
 main_ui_file= "main.ui"
 select_ui_file = "DataSelect.ui"
