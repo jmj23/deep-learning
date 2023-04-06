@@ -1498,16 +1498,13 @@ class NiftiImportThread(QThread):
             
             # format and normalize images
             ims = np.swapaxes(np.rollaxis(canon_nft.get_data(),2,0),1,2)
-            for im in ims:
-                im -= np.min(im)
-                try:
-                    im /= np.max(im)
-                except Exception as e:
-                    print('Image max of 0')
+            for ii in range(ims.shape[0]):
+                ims[ii] = ims[ii] - np.min(ims[ii])
             # create pre-segmentation for quick select
             WSseg = np.zeros_like(ims)
             for ss in range(WSseg.shape[0]):
                 im = ims[ss,...]
+                im = im / np.max(im)
                 imgrad = sobel(im)
                 imgrad[imgrad<.01] = 0
                 WSseg[ss,...] = watershed(imgrad, markers=800, compactness=0.001)
