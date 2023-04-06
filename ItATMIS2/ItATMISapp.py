@@ -13,19 +13,7 @@ from skimage.segmentation import watershed
 from skimage.filters import sobel
 from skimage.morphology import reconstruction
 
-# Use first available GPU
 import os
-import GPUtil
-try:
-    if not 'DEVICE_ID' in locals():
-        DEVICE_ID = GPUtil.getFirstAvailable()[0]
-        print('Using GPU',DEVICE_ID)
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
-except RuntimeError as e:
-    print('No GPU available')
-    print('Using CPU')
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    
 import configparser
 import contextlib
 import nibabel as nib
@@ -45,6 +33,17 @@ import keras.backend as K
 from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.utils.np_utils import to_categorical
+import tensorflow as tf
+
+# select GPU to use
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
+# check if tensorflow is using GPU
+tf.test.is_gpu_available()
+
+# check if keras is using GPU
+print(K.tensorflow_backend._get_available_gpus())
+assert len(K.tensorflow_backend._get_available_gpus()) > 0, "No GPU found"
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
