@@ -1504,7 +1504,10 @@ class NiftiImportThread(QThread):
             WSseg = np.zeros_like(ims)
             for ss in range(WSseg.shape[0]):
                 im = ims[ss,...]
-                im = im / np.max(im)
+                try:
+                    im = im / np.max(im)
+                except:
+                    pass
                 imgrad = sobel(im)
                 imgrad[imgrad<.01] = 0
                 WSseg[ss,...] = watershed(imgrad, markers=800, compactness=0.001)
