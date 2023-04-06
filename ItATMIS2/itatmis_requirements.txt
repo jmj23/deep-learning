@@ -3,21 +3,14 @@
 
 ## Requiresments that are not version-specific ##
 numpy
-sys
-os
 pyqt5
 pyqtgraph
 gputil
 configparser
 nibabel
 natsort
-keras
-tensorflow
-tensorflow-gpu
+keras==2.2.4
+tensorflow-gpu==1.14
 h5py
-time
 scipy
-contextlib
-json
-
 ## Requirements with version specifiers ##
