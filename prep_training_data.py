@@ -19,6 +19,8 @@ from Utils.VisTools import save_masked_image
 # each subject has a "ItATMISmasks" subdirectory with the mask nii file
 data_dir = "/mnt/nas/lawrence/minnhealth_sample/nii/selected_series/"
 
+pos_neg_ratio = 5  # ratio of positive to negative slices to keep
+
 # for output
 project_dir = "/mnt/nas/jacob/minnhealth"
 datapath = os.path.join(project_dir, "SegData.hdf5")
@@ -41,14 +43,17 @@ for subject_dir in tqdm(subject_dirs, desc="Loading data"):
     pos_slices = np.sum(mask, axis=(1, 2)) > 0
     neg_slices = np.logical_not(pos_slices)
 
-    # remove some slices with no mask so there are equal numbers of positive and negative slices
-    # num_pos = np.sum(pos_slices)
-    # num_neg = np.sum(neg_slices)
-    # num_remove = num_neg - num_pos
-    # remove_indices = np.where(neg_slices)[0][np.random.choice(num_neg, num_remove, replace=False)]
+    # remove most slices with no mask so there are a balance of positive and negative slices
+    num_pos = np.sum(pos_slices)
+    num_neg = np.sum(neg_slices)
+    # num_neg_left = num_neg - num_remove = num_pos // pos_neg_ratio
+    num_remove = num_neg - num_pos // pos_neg_ratio
+    num_remove = max(num_remove, 0)
+    num_remove = min(num_remove, num_neg)
+    remove_indices = np.where(neg_slices)[0][np.random.choice(num_neg, num_remove, replace=False)]
 
     # remove all slices with no mask
-    remove_indices = np.where(neg_slices)[0]
+    # remove_indices = np.where(neg_slices)[0]
 
     mask = np.delete(mask, remove_indices, axis=0)
     mask_arrays.append(mask)
